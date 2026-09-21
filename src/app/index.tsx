@@ -35,8 +35,15 @@ export default function Index() {
   async function handleCreate() {
     if (!deviceId) return;
     setBusy(true);
-    const code = generateCode();
 
+    // This removes any codes a device generated but never got joined
+    await supabase
+      .from("pairs")
+      .delete()
+      .eq("device_a", deviceId)
+      .is("device_b", null);
+
+    const code = generateCode();
     const { data, error } = await supabase
       .from("pairs")
       .insert({ code, device_a: deviceId })

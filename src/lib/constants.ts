@@ -1,0 +1,1 @@
+export const PAIR_ID_KEY = "stellate_pair_id";
