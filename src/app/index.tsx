@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { View, Text, TextInput, Pressable, Alert, ActivityIndicator } from "react-native";
+import { View, Text, TextInput, Pressable, Alert, ActivityIndicator, Share } from "react-native";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Clipboard from "expo-clipboard";
 import { supabase } from "@/lib/supabase";
 import { useDeviceId } from "@/hooks/use-device-id";
-
-const PAIR_ID_KEY = "stellate_pair_id";
+import { PAIR_ID_KEY } from "@/lib/constants";
 
 function generateCode() {
   // this is for the generated connection 6-character code and it has no confusing characters like 0/O or 1/I
@@ -18,6 +18,7 @@ export default function Index() {
   const { deviceId, isLoading: deviceLoading } = useDeviceId();
   const [checkingExisting, setCheckingExisting] = useState(true);
   const [joinCode, setJoinCode] = useState("");
+  const [pendingCode, setPendingCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   // this is for if there is already a saved pair and it will skip straight to the sky view
@@ -37,57 +38,112 @@ export default function Index() {
     setBusy(true);
 
     // This removes any codes a device generated but never got joined
-    await supabase
-      .from("pairs")
-      .delete()
-      .eq("device_a", deviceId)
-      .is("device_b", null);
+    await supabase.from("pairs").delete().eq("device_a", deviceId).is("device_b", null);
 
     const code = generateCode();
-    const { data, error } = await supabase
-      .from("pairs")
-      .insert({ code, device_a: deviceId })
-      .select()
-      .single();
+    const { error } = await supabase.from("pairs").insert({ code, device_a: deviceId });
 
     setBusy(false);
-    if (error || !data) {
-      Alert.alert("Something went wrong", error?.message ?? "Please try again.");
+    if (error) {
+      Alert.alert("Something went wrong", error.message);
       return;
     }
-
-    await AsyncStorage.setItem(PAIR_ID_KEY, data.id);
-    Alert.alert("Share this code", code, [
-      { text: "Done", onPress: () => router.replace("/sky") },
-    ]);
+    setPendingCode(code); // show the code screen, don't jump in yet
   }
 
   async function handleJoin() {
     if (!deviceId || joinCode.trim().length === 0) return;
     setBusy(true);
+    const code = joinCode.trim().toUpperCase();
 
-    const { data, error } = await supabase
+    const { data: existing, error: fetchError } = await supabase
       .from("pairs")
-      .update({ device_b: deviceId })
-      .eq("code", joinCode.trim().toUpperCase())
-      .is("device_b", null) // this only allows joining if device_b is not already set ( i.e. it is what stops two different people from both claiming the same code)
-      .select()
+      .select("*")
+      .eq("code", code)
       .single();
 
-    setBusy(false);
-    if (error || !data) {
+    if (fetchError || !existing) {
+      setBusy(false);
       Alert.alert("Couldn't connect", "Check the code and try again.");
       return;
     }
 
-    await AsyncStorage.setItem(PAIR_ID_KEY, data.id);
-    router.replace("/sky");
+    // Rejoining a pair you're already part of — always allowed
+    if (existing.device_a === deviceId || existing.device_b === deviceId) {
+      await AsyncStorage.setItem(PAIR_ID_KEY, existing.id);
+      setBusy(false);
+      router.replace("/sky");
+      return;
+    }
+
+    // Slot open — claim it
+    if (!existing.device_b) {
+      const { data, error } = await supabase
+        .from("pairs")
+        .update({ device_b: deviceId })
+        .eq("id", existing.id)
+        .is("device_b", null) // this only allows joining if device_b is not already set ( i.e. it is what stops two different people from both claiming the same code)
+        .select()
+        .single();
+
+      setBusy(false);
+      if (error || !data) {
+        Alert.alert("Couldn't connect", "Someone may have just joined that code.");
+        return;
+      }
+      await AsyncStorage.setItem(PAIR_ID_KEY, data.id);
+      router.replace("/sky");
+      return;
+    }
+
+    setBusy(false);
+    Alert.alert("That code is taken", "It already connects two other people — ask for a new one.");
   }
 
   if (deviceLoading || checkingExisting) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator />
+      </View>
+    );
+  }
+
+  // Screen shown right after creating a code
+  if (pendingCode) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 16 }}>
+        <Text style={{ fontSize: 18, textAlign: "center" }}>Share this code</Text>
+        <Text style={{ fontSize: 40, fontWeight: "700", textAlign: "center", letterSpacing: 4 }}>
+          {pendingCode}
+        </Text>
+
+        <Pressable
+          onPress={async () => {
+            await Clipboard.setStringAsync(pendingCode);
+            Alert.alert("Copied");
+          }}
+          style={{ backgroundColor: "#457b9d", padding: 16, borderRadius: 12 }}
+        >
+          <Text style={{ color: "white", textAlign: "center" }}>Copy code</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => Share.share({ message: `Join me on Stellate: ${pendingCode}` })}
+          style={{ backgroundColor: "#457b9d", padding: 16, borderRadius: 12 }}
+        >
+          <Text style={{ color: "white", textAlign: "center" }}>Send to someone</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={async () => {
+            const { data } = await supabase.from("pairs").select("id").eq("code", pendingCode).single();
+            if (data) await AsyncStorage.setItem(PAIR_ID_KEY, data.id);
+            router.replace("/sky");
+          }}
+          style={{ padding: 16 }}
+        >
+          <Text style={{ textAlign: "center", color: "#888" }}>Done</Text>
+        </Pressable>
       </View>
     );
   }
@@ -111,6 +167,8 @@ export default function Index() {
         autoCapitalize="characters"
         value={joinCode}
         onChangeText={setJoinCode}
+        onSubmitEditing={handleJoin}
+        returnKeyType="done"
         style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 12, padding: 16, textAlign: "center" }}
       />
 
