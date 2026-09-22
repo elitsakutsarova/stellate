@@ -6,6 +6,7 @@ import * as Clipboard from "expo-clipboard";
 import { supabase } from "@/lib/supabase";
 import { useDeviceId } from "@/hooks/use-device-id";
 import { PAIR_ID_KEY, PAIR_CODE_KEY } from "@/lib/constants";
+import { StyleSheet } from "react-native";
 
 function generateCode() {
   // this is for the generated connection 6-character code and it has no confusing characters like 0/O or 1/I

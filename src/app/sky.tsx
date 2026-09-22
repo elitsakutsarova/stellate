@@ -7,12 +7,13 @@ import { Share } from "react-native";
 import { supabase } from "@/lib/supabase";
 import { useDeviceId } from "@/hooks/use-device-id";
 import { PAIR_ID_KEY, PAIR_CODE_KEY } from "@/lib/constants";
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { useLocation } from "@/hooks/use-location";
 import { useSkyBodies } from "@/hooks/use-sky-bodies";
-import { useCompassHeading } from "@/hooks/use-compass-heading";
 import { useRef } from "react";
+import { useWindowDimensions } from "react-native";
+import { useDeviceOrientation } from "@/hooks/use-device-orientation";
+import { projectToScreen } from "@/hooks/use-sky-bodies";
 
 export default function Sky() {
     const router = useRouter();
@@ -21,21 +22,16 @@ export default function Sky() {
     const [partnerOnline, setPartnerOnline] = useState(false);
     const [partnerLeft, setPartnerLeft] = useState(false);
 
-    //locaton
     const { coords, error: locationError, retry } = useLocation();
     const { active } = useSkyBodies(coords);
-    const heading = useCompassHeading();
-    const rotation = useSharedValue(0);
+    const { width, height } = useWindowDimensions();
+    const { E, N, U, declination } = useDeviceOrientation();
+    const projection = active
+        ? projectToScreen(E, N, U, declination, active.bearing, active.altitude, width, height)
+        : null;
+
+    const isAligned = projection ? projection.visible && projection.angleFromCenter < 8 : false;
     const wasAligned = useRef(false);
-
-    const relativeAngle = active
-        ? ((active.bearing - heading + 540) % 360) - 180 // -180..180, 0 = dead ahead
-        : 0;
-    const isAligned = active ? Math.abs(relativeAngle) < 15 : false;
-
-    useEffect(() => {
-        rotation.value = withTiming(relativeAngle, { duration: 250 });
-    }, [relativeAngle]);
 
     useEffect(() => {
         if (isAligned && !wasAligned.current) {
@@ -43,10 +39,6 @@ export default function Sky() {
         }
         wasAligned.current = isAligned;
     }, [isAligned]);
-
-    const arrowStyle = useAnimatedStyle(() => ({
-        transform: [{ rotate: `${rotation.value}deg` }],
-    }));
 
     useEffect(() => {
         if (!deviceId) return;
@@ -132,15 +124,24 @@ export default function Sky() {
             )}
 
             {active && (
-                <View style={{ alignItems: "center", gap: 12 }}>
-                    <Text style={{ fontSize: 48 }}>{active.name === "sun" ? "☀️" : "🌙"}</Text>
-                    <Animated.View style={[{ width: 60, height: 60, alignItems: "center" }, arrowStyle]}>
-                        <Text style={{ fontSize: 36 }}>⬆️</Text>
-                    </Animated.View>
-                    <Text style={{ color: isAligned ? "#2a9d8f" : "#888" }}>
-                        {isAligned ? "You're looking right at it" : "Turn to follow the arrow"}
-                    </Text>
+                <View style={{ flex: 1 }}>
+            {/* temporary debug readout — remove once this locks on reliably */}
+            <Text style={{ position: "absolute", top: 8, left: 12, color: "#888", fontSize: 12 }}>
+                {active.name} target az {active.bearing.toFixed(0)}° alt {active.altitude.toFixed(0)}°{"\n"}
+                diff {projection?.angleFromCenter.toFixed(0)}° · declination {declination.toFixed(0)}°
+            </Text>
+            {projection?.visible && (
+                <View style={{ position: "absolute", left: projection.x - 24, top: projection.y - 24 }}>
+                    <Text style={{ fontSize: 48 }}>{active?.name === "sun" ? "☀️" : "🌙"}</Text>
                 </View>
+            )}
+            {projection && !projection.visible && (
+                <Text style={{ position: "absolute", bottom: 40, alignSelf: "center", color: "#888" }}>
+                    {projection.dRight > 0 ? "Turn right" : "Turn left"}
+                    {Math.abs(projection.dUp) > 0.15 ? (projection.dUp > 0 ? " and look up" : " and look down") : ""}
+                </Text>
+            )}
+        </View>
             )}
 
             {partnerLeft && (
