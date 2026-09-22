@@ -5,7 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
 import { supabase } from "@/lib/supabase";
 import { useDeviceId } from "@/hooks/use-device-id";
-import { PAIR_ID_KEY } from "@/lib/constants";
+import { PAIR_ID_KEY, PAIR_CODE_KEY } from "@/lib/constants";
 
 function generateCode() {
   // this is for the generated connection 6-character code and it has no confusing characters like 0/O or 1/I
@@ -71,6 +71,7 @@ export default function Index() {
     // Rejoining a pair you're already part of — always allowed
     if (existing.device_a === deviceId || existing.device_b === deviceId) {
       await AsyncStorage.setItem(PAIR_ID_KEY, existing.id);
+      await AsyncStorage.setItem(PAIR_CODE_KEY, existing.code);
       setBusy(false);
       router.replace("/sky");
       return;
@@ -92,6 +93,7 @@ export default function Index() {
         return;
       }
       await AsyncStorage.setItem(PAIR_ID_KEY, data.id);
+      await AsyncStorage.setItem(PAIR_CODE_KEY, data.code);
       router.replace("/sky");
       return;
     }
@@ -119,8 +121,12 @@ export default function Index() {
 
         <Pressable
           onPress={async () => {
-            await Clipboard.setStringAsync(pendingCode);
-            Alert.alert("Copied");
+            const { data } = await supabase.from("pairs").select("id, code").eq("code", pendingCode).single();
+            if (data) {
+              await AsyncStorage.setItem(PAIR_ID_KEY, data.id);
+              await AsyncStorage.setItem(PAIR_CODE_KEY, data.code);
+            }
+            router.replace("/sky");
           }}
           style={{ backgroundColor: "#457b9d", padding: 16, borderRadius: 12 }}
         >
