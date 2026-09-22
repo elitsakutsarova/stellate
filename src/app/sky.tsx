@@ -40,6 +40,7 @@ export default function Sky() {
         wasAligned.current = isAligned;
     }, [isAligned]);
 
+
     useEffect(() => {
         if (!deviceId) return;
 

@@ -89,7 +89,7 @@ export function useDeviceOrientation() {
             // e.g. z = -1g lying flat screen-up per Apple's CMAccelerometerData
             // docs), not the reaction force pointing up. Negate so `gravity`
             // consistently means "up" for computeBasis.
-            gravity.current = lerpVec(gravity.current, { x: -x, y: -y, z: -z }, 0.3);
+            gravity.current = lerpVec(gravity.current, { x: -x, y: -y, z: -z }, 0.08);
             recompute();
         });
         return () => sub.remove();
@@ -98,7 +98,10 @@ export function useDeviceOrientation() {
     useEffect(() => {
         Magnetometer.setUpdateInterval(100);
         const sub = Magnetometer.addListener(({ x, y, z }) => {
-            magnetic.current = lerpVec(magnetic.current, { x, y, z }, 0.3);
+            // Magnetometer is noisier than the accelerometer (more prone to
+            // nearby-metal/electronics interference), and it's what mostly
+            // drives the arrow's rotation, so smooth it a bit harder.
+            magnetic.current = lerpVec(magnetic.current, { x, y, z }, 0.05);
             recompute();
         });
         return () => sub.remove();
