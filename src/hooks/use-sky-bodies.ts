@@ -53,6 +53,9 @@ export function projectToScreen(
 
     return {
         x, y,
+        // only actually in the frame, like looking through a viewfinder —
+        // it should appear as it enters and disappear as it leaves, not
+        // stick to the screen edge from anywhere in front of you
         visible: zCam > 0 && angleFromCenter < FOV / 2,
         angleFromCenter,
         // screen-relative direction to the target, for the off-screen hint —

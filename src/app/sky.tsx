@@ -124,22 +124,29 @@ export default function Sky() {
             )}
 
             {active && (
-                <View style={{ flex: 1 }}>
+                // Spans the full screen explicitly — the parent's alignItems:
+                // "center" would otherwise shrink a flex:1 child to its content
+                // width, throwing off projection.x/y (computed from the actual
+                // screen width/height) and making the icon land somewhere
+                // that doesn't match where it's supposed to be.
+                <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}>
             {/* temporary debug readout — remove once this locks on reliably */}
             <Text style={{ position: "absolute", top: 8, left: 12, color: "#888", fontSize: 12 }}>
                 {active.name} target az {active.bearing.toFixed(0)}° alt {active.altitude.toFixed(0)}°{"\n"}
                 diff {projection?.angleFromCenter.toFixed(0)}° · declination {declination.toFixed(0)}°
             </Text>
-            {projection?.visible && (
-                <View style={{ position: "absolute", left: projection.x - 24, top: projection.y - 24 }}>
-                    <Text style={{ fontSize: 48 }}>{active?.name === "sun" ? "☀️" : "🌙"}</Text>
-                </View>
-            )}
             {projection && !projection.visible && (
                 <Text style={{ position: "absolute", bottom: 40, alignSelf: "center", color: "#888" }}>
                     {projection.dRight > 0 ? "Turn right" : "Turn left"}
                     {Math.abs(projection.dUp) > 0.15 ? (projection.dUp > 0 ? " and look up" : " and look down") : ""}
                 </Text>
+            )}
+            {projection?.visible && (
+                <View style={{ position: "absolute", left: projection.x - 24, top: projection.y - 24, zIndex: 10 }}>
+                    <Text style={{ fontSize: 48 }}>
+                        {active?.name === "sun" ? "☀️" : "🌙"}
+                    </Text>
+                </View>
             )}
         </View>
             )}
