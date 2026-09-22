@@ -146,7 +146,7 @@ export default function Index() {
             const { data } = await supabase.from("pairs").select("id").eq("code", pendingCode).single();
             if (data) {
               await AsyncStorage.setItem(PAIR_ID_KEY, data.id);
-              await AsyncStorage.setItem(PAIR_CODE_KEY, data.code);
+              await AsyncStorage.setItem(PAIR_CODE_KEY, pendingCode);
             }
             router.replace("/sky");
           }}
