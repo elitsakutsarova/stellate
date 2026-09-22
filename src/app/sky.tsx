@@ -18,34 +18,34 @@ export default function Sky() {
     useEffect(() => {
         if (!deviceId) return;
 
+        let rowChannel: any;
+        let presenceChannel: any;
+        let cancelled = false;
+
         (async () => {
             const pairId = await AsyncStorage.getItem(PAIR_ID_KEY);
-            if (!pairId) return router.replace("/");
+            if (!pairId) { router.replace("/"); return; }
 
             const { data } = await supabase.from("pairs").select("*").eq("id", pairId).single();
-            if (!data) return router.replace("/");
+            if (!data || cancelled) { router.replace("/"); return; }
             setPair(data);
 
             const amI_A = data.device_a === deviceId;
-            const partnerActive = amI_A ? data.device_b_active : data.device_a_active;
-            setPartnerLeft(!partnerActive);
+            setPartnerLeft(!(amI_A ? data.device_b_active : data.device_a_active));
 
-            // Listen for the partner's row changing (they disconnect, or come back)
-            const rowChannel = supabase
+            rowChannel = supabase
                 .channel(`pair-row-${pairId}`)
                 .on(
                     "postgres_changes",
                     { event: "UPDATE", schema: "public", table: "pairs", filter: `id=eq.${pairId}` },
                     (payload) => {
                         const updated = payload.new as any;
-                        const stillActive = amI_A ? updated.device_b_active : updated.device_a_active;
-                        setPartnerLeft(!stillActive);
+                        setPartnerLeft(!(amI_A ? updated.device_b_active : updated.device_a_active));
                     }
                 )
                 .subscribe();
 
-            // Presence: are they in the app right now
-            const presenceChannel = supabase.channel(`pair-presence-${pairId}`, {
+            presenceChannel = supabase.channel(`pair-presence-${pairId}`, {
                 config: { presence: { key: deviceId } },
             });
             presenceChannel
@@ -54,17 +54,16 @@ export default function Sky() {
                     const others = Object.keys(state).filter((k) => k !== deviceId);
                     setPartnerOnline(others.length > 0);
                 })
-                .subscribe(async (status) => {
-                    if (status === "SUBSCRIBED") {
-                        await presenceChannel.track({ online: true });
-                    }
+                .subscribe(async (status: string) => {
+                    if (status === "SUBSCRIBED") await presenceChannel.track({ online: true });
                 });
-
-            return () => {
-                supabase.removeChannel(rowChannel);
-                supabase.removeChannel(presenceChannel);
-            };
         })();
+
+        return () => {
+            cancelled = true;
+            if (rowChannel) supabase.removeChannel(rowChannel);
+            if (presenceChannel) supabase.removeChannel(presenceChannel);
+        };
     }, [deviceId]);
 
     async function handleDisconnect() {

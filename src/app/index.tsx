@@ -70,6 +70,12 @@ export default function Index() {
 
     // Rejoining a pair you're already part of — always allowed
     if (existing.device_a === deviceId || existing.device_b === deviceId) {
+      const amI_A = existing.device_a === deviceId;
+      await supabase
+        .from("pairs")
+        .update(amI_A ? { device_a_active: true } : { device_b_active: true })
+        .eq("id", existing.id);
+
       await AsyncStorage.setItem(PAIR_ID_KEY, existing.id);
       await AsyncStorage.setItem(PAIR_CODE_KEY, existing.code);
       setBusy(false);
@@ -121,12 +127,8 @@ export default function Index() {
 
         <Pressable
           onPress={async () => {
-            const { data } = await supabase.from("pairs").select("id, code").eq("code", pendingCode).single();
-            if (data) {
-              await AsyncStorage.setItem(PAIR_ID_KEY, data.id);
-              await AsyncStorage.setItem(PAIR_CODE_KEY, data.code);
-            }
-            router.replace("/sky");
+            await Clipboard.setStringAsync(pendingCode);
+            Alert.alert("Copied");
           }}
           style={{ backgroundColor: "#457b9d", padding: 16, borderRadius: 12 }}
         >
@@ -143,7 +145,10 @@ export default function Index() {
         <Pressable
           onPress={async () => {
             const { data } = await supabase.from("pairs").select("id").eq("code", pendingCode).single();
-            if (data) await AsyncStorage.setItem(PAIR_ID_KEY, data.id);
+            if (data) {
+              await AsyncStorage.setItem(PAIR_ID_KEY, data.id);
+              await AsyncStorage.setItem(PAIR_CODE_KEY, data.code);
+            }
             router.replace("/sky");
           }}
           style={{ padding: 16 }}
