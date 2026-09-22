@@ -7,6 +7,12 @@ import { Share } from "react-native";
 import { supabase } from "@/lib/supabase";
 import { useDeviceId } from "@/hooks/use-device-id";
 import { PAIR_ID_KEY, PAIR_CODE_KEY } from "@/lib/constants";
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
+import { useLocation } from "@/hooks/use-location";
+import { useSkyBodies } from "@/hooks/use-sky-bodies";
+import { useCompassHeading } from "@/hooks/use-compass-heading";
+import { useRef } from "react";
 
 export default function Sky() {
     const router = useRouter();
@@ -14,6 +20,33 @@ export default function Sky() {
     const [pair, setPair] = useState<any>(null);
     const [partnerOnline, setPartnerOnline] = useState(false);
     const [partnerLeft, setPartnerLeft] = useState(false);
+
+    //locaton
+    const { coords, error: locationError, retry } = useLocation();
+    const { active } = useSkyBodies(coords);
+    const heading = useCompassHeading();
+    const rotation = useSharedValue(0);
+    const wasAligned = useRef(false);
+
+    const relativeAngle = active
+        ? ((active.bearing - heading + 540) % 360) - 180 // -180..180, 0 = dead ahead
+        : 0;
+    const isAligned = active ? Math.abs(relativeAngle) < 15 : false;
+
+    useEffect(() => {
+        rotation.value = withTiming(relativeAngle, { duration: 250 });
+    }, [relativeAngle]);
+
+    useEffect(() => {
+        if (isAligned && !wasAligned.current) {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        }
+        wasAligned.current = isAligned;
+    }, [isAligned]);
+
+    const arrowStyle = useAnimatedStyle(() => ({
+        transform: [{ rotate: `${rotation.value}deg` }],
+    }));
 
     useEffect(() => {
         if (!deviceId) return;
@@ -66,7 +99,7 @@ export default function Sky() {
         };
     }, [deviceId]);
 
-    // um try to make the function update status automatically (without reload) if someone has disconnected and reconnected
+    // done - um try to make the function update status automatically (without reload) if someone has disconnected and reconnected
     async function handleDisconnect() {
         if (pair && deviceId) {
             const amI_A = pair.device_a === deviceId;
@@ -89,7 +122,26 @@ export default function Sky() {
 
     return (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 20, padding: 24 }}>
-            <Text>Sky view</Text>
+            {locationError && (
+                <View style={{ alignItems: "center", gap: 8 }}>
+                    <Text style={{ color: "#e63946" }}>{locationError}</Text>
+                    <Pressable onPress={retry}>
+                        <Text style={{ color: "#457b9d" }}>Try again</Text>
+                    </Pressable>
+                </View>
+            )}
+
+            {active && (
+                <View style={{ alignItems: "center", gap: 12 }}>
+                    <Text style={{ fontSize: 48 }}>{active.name === "sun" ? "☀️" : "🌙"}</Text>
+                    <Animated.View style={[{ width: 60, height: 60, alignItems: "center" }, arrowStyle]}>
+                        <Text style={{ fontSize: 36 }}>⬆️</Text>
+                    </Animated.View>
+                    <Text style={{ color: isAligned ? "#2a9d8f" : "#888" }}>
+                        {isAligned ? "You're looking right at it" : "Turn to follow the arrow"}
+                    </Text>
+                </View>
+            )}
 
             {partnerLeft && (
                 <View style={{ backgroundColor: "#f4a26140", padding: 12, borderRadius: 10 }}>

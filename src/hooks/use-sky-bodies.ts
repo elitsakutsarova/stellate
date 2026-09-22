@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import SunCalc from "suncalc";
+/* import SunCalc from "suncalc"; */
 
+const SunCalc = require("suncalc");
 type Body = { altitude: number; bearing: number; visible: boolean };
 
 // where the sun and moon actually are, recalculated every 30s - even though they move slowly, this is to keep the display accurate and in sync with the real world
