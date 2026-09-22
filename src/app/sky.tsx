@@ -66,6 +66,7 @@ export default function Sky() {
         };
     }, [deviceId]);
 
+    // um try to make the function update status automatically (without reload) if someone has disconnected and reconnected
     async function handleDisconnect() {
         if (pair && deviceId) {
             const amI_A = pair.device_a === deviceId;
@@ -88,7 +89,7 @@ export default function Sky() {
 
     return (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 20, padding: 24 }}>
-            <Text>Sky view coming soon</Text>
+            <Text>Sky view</Text>
 
             {partnerLeft && (
                 <View style={{ backgroundColor: "#f4a26140", padding: 12, borderRadius: 10 }}>

@@ -68,7 +68,7 @@ export default function Index() {
       return;
     }
 
-    // Rejoining a pair you're already part of — always allowed
+    // Option to reconnect to existing pair
     if (existing.device_a === deviceId || existing.device_b === deviceId) {
       const amI_A = existing.device_a === deviceId;
       await supabase
@@ -83,7 +83,7 @@ export default function Index() {
       return;
     }
 
-    // Slot open — claim it
+    // Generated code with unclaimed device_b, so someone can join it; !!! technically if someone has the code they can "steal" the spot from the other person if they haven't joined yet
     if (!existing.device_b) {
       const { data, error } = await supabase
         .from("pairs")
@@ -105,7 +105,7 @@ export default function Index() {
     }
 
     setBusy(false);
-    Alert.alert("That code is taken", "It already connects two other people — ask for a new one.");
+    Alert.alert("That code is taken", "It already connects two other people - ask for a new one.");
   }
 
   if (deviceLoading || checkingExisting) {
@@ -116,7 +116,6 @@ export default function Index() {
     );
   }
 
-  // Screen shown right after creating a code
   if (pendingCode) {
     return (
       <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 16 }}>
@@ -193,3 +192,5 @@ export default function Index() {
     </View>
   );
 }
+
+// possibly add a stylesheet for the inline styles
