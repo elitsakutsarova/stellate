@@ -135,11 +135,22 @@ export default function Sky() {
                 {active.name} target az {active.bearing.toFixed(0)}° alt {active.altitude.toFixed(0)}°{"\n"}
                 diff {projection?.angleFromCenter.toFixed(0)}° · declination {declination.toFixed(0)}°
             </Text>
-            {projection && !projection.visible && (
+            {projection && (
                 <Text style={{ position: "absolute", bottom: 40, alignSelf: "center", color: "#888" }}>
-                    {projection.dRight > 0 ? "Turn right" : "Turn left"}
-                    {Math.abs(projection.dUp) > 0.15 ? (projection.dUp > 0 ? " and look up" : " and look down") : ""}
+                    Turn your phone to look around
                 </Text>
+            )}
+            {projection && !projection.visible && (
+                <View
+                    style={{
+                        position: "absolute",
+                        left: projection.arrowX - 16,
+                        top: projection.arrowY - 16,
+                        transform: [{ rotate: `${projection.arrowDeg}deg` }],
+                    }}
+                >
+                    <Text style={{ fontSize: 32, color: "#888" }}>▲</Text>
+                </View>
             )}
             {projection?.visible && (
                 <View style={{ position: "absolute", left: projection.x - 24, top: projection.y - 24, zIndex: 10 }}>

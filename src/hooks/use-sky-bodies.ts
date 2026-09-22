@@ -51,6 +51,24 @@ export function projectToScreen(
     const x = width / 2 + (xCam / depth) * FOCAL * (width / 2);
     const y = height / 2 - (yCam / depth) * FOCAL * (height / 2);
 
+    // A compass arrow at the screen border: cast a ray from the center in
+    // the direction of (dRight, dUp) and find where it hits the (inset)
+    // screen rectangle — not a circle, so it reaches all the way to the
+    // edges, including the corners. Driven purely by that direction (not
+    // the FOV-based x/y above), so it stays well-behaved even directly
+    // behind you, where the perspective-divided x/y blow up or flip sign.
+    const arrowAngleRad = Math.atan2(xCam, yCam);
+    const dirX = Math.sin(arrowAngleRad);
+    const dirY = -Math.cos(arrowAngleRad);
+    const arrowMargin = 24;
+    const halfW = width / 2 - arrowMargin;
+    const halfH = height / 2 - arrowMargin;
+    const tX = dirX !== 0 ? halfW / Math.abs(dirX) : Infinity;
+    const tY = dirY !== 0 ? halfH / Math.abs(dirY) : Infinity;
+    const rayDist = Math.min(tX, tY);
+    const arrowX = width / 2 + dirX * rayDist;
+    const arrowY = height / 2 + dirY * rayDist;
+
     return {
         x, y,
         // only actually in the frame, like looking through a viewfinder —
@@ -58,6 +76,8 @@ export function projectToScreen(
         // stick to the screen edge from anywhere in front of you
         visible: zCam > 0 && angleFromCenter < FOV / 2,
         angleFromCenter,
+        arrowX, arrowY,
+        arrowDeg: (arrowAngleRad * 180) / Math.PI,
         // screen-relative direction to the target, for the off-screen hint —
         // signs only, roll-correct (unlike a raw compass-bearing diff)
         dRight: xCam,
