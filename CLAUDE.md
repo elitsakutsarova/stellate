@@ -12,6 +12,5 @@
 
 # general rules
 - Treat every session as a teaching opportunity
-- use named arrow functions
 - follow the KISS and DRY methods
 
