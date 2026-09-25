@@ -15,10 +15,14 @@ import * as Location from "expo-location";
 // mount/unmount/remount check fully tears down and recreates this hook's
 // instance (confirmed earlier with the sky.tsx mount-loop bug), so a ref
 // or piece of state would reset with it and never see the first
-// instance's still-pending request — letting a second one re-trigger the
-// real system dialog on top of the first. A plain variable here survives
-// that remount, since it isn't tied to any one component instance.
-let isRequestingPermission = false;
+// instance's still-pending request. This holds the actual in-flight
+// promise (not just a boolean) so a second, overlapping call *shares* the
+// same real result instead of being dropped — a plain "already in
+// progress, skip" flag stopped the duplicate dialog, but silently lost
+// the result for whichever instance survived, since the other instance
+// (the one that actually got the result) had already been unmounted by
+// the time it resolved.
+let pendingPermissionRequest: ReturnType<typeof Location.requestForegroundPermissionsAsync> | null = null;
 
 export function useLocation() {
     const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -74,16 +78,19 @@ export function useLocation() {
         await handlePermissionResult(status, canAsk);
     }, [handlePermissionResult]);
 
-    // The only place that shows the real system permission dialog.
+    // The only place that shows the real system permission dialog. If a
+    // request is already in flight (e.g. from a dev-mode double-mount),
+    // this awaits that same promise instead of starting a second one —
+    // so every caller gets the real result, not just whichever instance
+    // happened to start it first.
     const requestPermission = useCallback(async () => {
-        if (isRequestingPermission) return;
-        isRequestingPermission = true;
-        try {
-            const { status, canAskAgain: canAsk } = await Location.requestForegroundPermissionsAsync();
-            await handlePermissionResult(status, canAsk);
-        } finally {
-            isRequestingPermission = false;
+        if (!pendingPermissionRequest) {
+            pendingPermissionRequest = Location.requestForegroundPermissionsAsync().finally(() => {
+                pendingPermissionRequest = null;
+            });
         }
+        const { status, canAskAgain: canAsk } = await pendingPermissionRequest;
+        await handlePermissionResult(status, canAsk);
     }, [handlePermissionResult]);
 
     useEffect(() => {
