@@ -78,6 +78,9 @@ export function projectToScreen(
         angleFromCenter,
         arrowX, arrowY,
         arrowDeg: (arrowAngleRad * 180) / Math.PI,
+        // no rotation behavior defined for the sun/moon icon itself yet —
+        // placeholder field so the icon's animation code has a value to use
+        iconRotation: 0,
         // screen-relative direction to the target, for the off-screen hint —
         // signs only, roll-correct (unlike a raw compass-bearing diff)
         dRight: xCam,

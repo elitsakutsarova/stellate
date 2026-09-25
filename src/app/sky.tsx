@@ -33,6 +33,55 @@ export default function Sky() {
 
     const isAligned = projection ? projection.visible && projection.angleFromCenter < 8 : false;
     const wasAligned = useRef(false);
+    const iconRef = useRef<View | null>(null);
+    const arrowRef = useRef<View | null>(null);
+    // Kept in sync every render (not via an effect) so the animation loop
+    // below can always read the latest projection without needing to
+    // restart — projection is a new object every render, so depending on
+    // it directly would tear down and reset the loop on every sensor tick.
+    const projectionRef = useRef(projection);
+    projectionRef.current = projection;
+    const targetPos = useRef({ x: projection?.x ?? 0, y: projection?.y ?? 0 });
+    const arrowState = useRef({
+        x: projection?.arrowX ?? 0,
+        y: projection?.arrowY ?? 0,
+        deg: projection?.arrowDeg ?? 0,
+    });
+
+    useEffect(() => {
+        let animationFrame: number;
+        function loop() {
+            animationFrame = requestAnimationFrame(loop);
+            const p = projectionRef.current;
+            targetPos.current.x += ((p?.x ?? targetPos.current.x) - targetPos.current.x) * 0.1;
+            targetPos.current.y += ((p?.y ?? targetPos.current.y) - targetPos.current.y) * 0.1;
+            iconRef.current?.setNativeProps({
+                style: {
+                    left: targetPos.current.x - 24,
+                    top: targetPos.current.y - 24,
+                    transform: [{ rotate: `${p?.iconRotation ?? 0}deg` }],
+                },
+            });
+
+            if (p) {
+                arrowState.current.x += (p.arrowX - arrowState.current.x) * 0.1;
+                arrowState.current.y += (p.arrowY - arrowState.current.y) * 0.1;
+                // shortest-path angle smoothing, so crossing the 0°/360°
+                // wrap doesn't make the arrow spin the long way around
+                const deltaDeg = ((p.arrowDeg - arrowState.current.deg + 540) % 360) - 180;
+                arrowState.current.deg += deltaDeg * 0.1;
+            }
+            arrowRef.current?.setNativeProps({
+                style: {
+                    left: arrowState.current.x - 16,
+                    top: arrowState.current.y - 16,
+                    transform: [{ rotate: `${arrowState.current.deg}deg` }],
+                },
+            });
+        }
+        loop();
+        return () => cancelAnimationFrame(animationFrame);
+    }, []);
 
     useEffect(() => {
         if (isAligned && !wasAligned.current) {
@@ -92,7 +141,7 @@ export default function Sky() {
     }, [isHydrated, deviceId, pairId]);
 
     // done - um try to make the function update status automatically (without reload) if someone has disconnected and reconnected
-    const handleDisconnect = async () => {
+    async function handleDisconnect() {
         if (pair && deviceId) {
             const amI_A = pair.device_a === deviceId;
             await supabase
@@ -102,14 +151,14 @@ export default function Sky() {
         }
         await clearPair();
         router.replace("/");
-    };
+    }
 
-    const confirmDisconnect = () => {
+    function confirmDisconnect() {
         Alert.alert("Disconnect?", "You'll leave this connection. You can reconnect later with the same code.", [
             { text: "Cancel", style: "cancel" },
             { text: "Disconnect", style: "destructive", onPress: handleDisconnect },
         ]);
-    };
+    }
 
     return (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 20, padding: 24 }}>
@@ -132,36 +181,29 @@ export default function Sky() {
                     pointerEvents="box-none"
                     style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}
                 >
-            {/* temporary debug readout — remove once this locks on reliably */}
-            <Text style={{ position: "absolute", top: 8, left: 12, color: "#888", fontSize: 12 }}>
-                {active.name} target az {active.bearing.toFixed(0)}° alt {active.altitude.toFixed(0)}°{"\n"}
-                diff {projection?.angleFromCenter.toFixed(0)}° · declination {declination.toFixed(0)}°
-            </Text>
-            {projection && (
-                <Text style={{ position: "absolute", bottom: 40, alignSelf: "center", color: "#888" }}>
-                    Turn your phone to look around
-                </Text>
-            )}
-            {projection && !projection.visible && (
-                <View
-                    style={{
-                        position: "absolute",
-                        left: projection.arrowX - 16,
-                        top: projection.arrowY - 16,
-                        transform: [{ rotate: `${projection.arrowDeg}deg` }],
-                    }}
-                >
-                    <Text style={{ fontSize: 32, color: "#888" }}>▲</Text>
-                </View>
-            )}
-            {projection?.visible && (
-                <View style={{ position: "absolute", left: projection.x - 24, top: projection.y - 24, zIndex: 10 }}>
-                    <Text style={{ fontSize: 48 }}>
-                        {active?.name === "sun" ? "☀️" : "🌙"}
+                    {/* temporary debug readout — remove once this locks on reliably */}
+                    <Text style={{ position: "absolute", top: 8, left: 12, color: "#888", fontSize: 12 }}>
+                        {active.name} target az {active.bearing.toFixed(0)}° alt {active.altitude.toFixed(0)}°{"\n"}
+                        diff {projection?.angleFromCenter.toFixed(0)}° · declination {declination.toFixed(0)}°
                     </Text>
+                    {projection && (
+                        <Text style={{ position: "absolute", bottom: 40, alignSelf: "center", color: "#888" }}>
+                            Turn your phone to look around
+                        </Text>
+                    )}
+                    {projection && !projection.visible && (
+                        <View ref={arrowRef} style={{ position: "absolute" }}>
+                            <Text style={{ fontSize: 32, color: "#888" }}>▲</Text>
+                        </View>
+                    )}
+                    {projection?.visible && (
+                        <View ref={iconRef} style={{ position: "absolute", zIndex: 10 }}>
+                            <Text style={{ fontSize: 48 }}>
+                                {active?.name === "sun" ? "☀️" : "🌙"}
+                            </Text>
+                        </View>
+                    )}
                 </View>
-            )}
-        </View>
             )}
 
             {partnerLeft && (

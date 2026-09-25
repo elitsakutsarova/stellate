@@ -101,7 +101,7 @@ export function useDeviceOrientation() {
             // Magnetometer is noisier than the accelerometer (more prone to
             // nearby-metal/electronics interference), and it's what mostly
             // drives the arrow's rotation, so smooth it a bit harder.
-            magnetic.current = lerpVec(magnetic.current, { x, y, z }, 0.05);
+            magnetic.current = lerpVec(magnetic.current, { x, y, z }, 0.08);
             recompute();
         });
         return () => sub.remove();
