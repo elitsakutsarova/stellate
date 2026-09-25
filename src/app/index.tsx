@@ -1,40 +1,35 @@
 import { useEffect, useState } from "react";
 import { View, Text, TextInput, Pressable, Alert, ActivityIndicator, Share } from "react-native";
 import { useRouter } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
 import { supabase } from "@/lib/supabase";
-import { useDeviceId } from "@/hooks/use-device-id";
-import { PAIR_ID_KEY, PAIR_CODE_KEY } from "@/lib/constants";
+import { usePairStore } from "@/store/use-pair-store";
 import { StyleSheet } from "react-native";
 
-function generateCode() {
+const generateCode = () => {
   // this is for the generated connection 6-character code and it has no confusing characters like 0/O or 1/I
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-}
+};
 
 export default function Index() {
   const router = useRouter();
-  const { deviceId, isLoading: deviceLoading } = useDeviceId();
-  const [checkingExisting, setCheckingExisting] = useState(true);
+  const deviceId = usePairStore((state) => state.deviceId);
+  const pairId = usePairStore((state) => state.pairId);
+  const isHydrated = usePairStore((state) => state.isHydrated);
+  const setPair = usePairStore((state) => state.setPair);
   const [joinCode, setJoinCode] = useState("");
   const [pendingCode, setPendingCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   // this is for if there is already a saved pair and it will skip straight to the sky view
   useEffect(() => {
-    (async () => {
-      const savedPairId = await AsyncStorage.getItem(PAIR_ID_KEY);
-      if (savedPairId) {
-        router.replace("/sky");
-      } else {
-        setCheckingExisting(false);
-      }
-    })();
-  }, []);
+    if (isHydrated && pairId) {
+      router.replace("/sky");
+    }
+  }, [isHydrated, pairId, router]);
 
-  async function handleCreate() {
+  const handleCreate = async () => {
     if (!deviceId) return;
     setBusy(true);
 
@@ -50,9 +45,9 @@ export default function Index() {
       return;
     }
     setPendingCode(code); // show the code screen, don't jump in yet
-  }
+  };
 
-  async function handleJoin() {
+  const handleJoin = async () => {
     if (!deviceId || joinCode.trim().length === 0) return;
     setBusy(true);
     const code = joinCode.trim().toUpperCase();
@@ -77,8 +72,7 @@ export default function Index() {
         .update(amI_A ? { device_a_active: true } : { device_b_active: true })
         .eq("id", existing.id);
 
-      await AsyncStorage.setItem(PAIR_ID_KEY, existing.id);
-      await AsyncStorage.setItem(PAIR_CODE_KEY, existing.code);
+      await setPair(existing.id, existing.code);
       setBusy(false);
       router.replace("/sky");
       return;
@@ -99,17 +93,16 @@ export default function Index() {
         Alert.alert("Couldn't connect", "Someone may have just joined that code.");
         return;
       }
-      await AsyncStorage.setItem(PAIR_ID_KEY, data.id);
-      await AsyncStorage.setItem(PAIR_CODE_KEY, data.code);
+      await setPair(data.id, data.code);
       router.replace("/sky");
       return;
     }
 
     setBusy(false);
     Alert.alert("That code is taken", "It already connects two other people - ask for a new one.");
-  }
+  };
 
-  if (deviceLoading || checkingExisting) {
+  if (!isHydrated || pairId) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator />
@@ -146,8 +139,7 @@ export default function Index() {
           onPress={async () => {
             const { data } = await supabase.from("pairs").select("id").eq("code", pendingCode).single();
             if (data) {
-              await AsyncStorage.setItem(PAIR_ID_KEY, data.id);
-              await AsyncStorage.setItem(PAIR_CODE_KEY, pendingCode);
+              await setPair(data.id, pendingCode);
             }
             router.replace("/sky");
           }}

@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
 import { View, Text, Pressable, Alert } from "react-native";
 import { useRouter } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
 import { Share } from "react-native";
 import { supabase } from "@/lib/supabase";
-import { useDeviceId } from "@/hooks/use-device-id";
-import { PAIR_ID_KEY, PAIR_CODE_KEY } from "@/lib/constants";
+import { usePairStore } from "@/store/use-pair-store";
 import * as Haptics from "expo-haptics";
 import { useLocation } from "@/hooks/use-location";
 import { useSkyBodies } from "@/hooks/use-sky-bodies";
@@ -17,7 +15,10 @@ import { projectToScreen } from "@/hooks/use-sky-bodies";
 
 export default function Sky() {
     const router = useRouter();
-    const { deviceId } = useDeviceId();
+    const deviceId = usePairStore((state) => state.deviceId);
+    const pairId = usePairStore((state) => state.pairId);
+    const isHydrated = usePairStore((state) => state.isHydrated);
+    const clearPair = usePairStore((state) => state.clearPair);
     const [pair, setPair] = useState<any>(null);
     const [partnerOnline, setPartnerOnline] = useState(false);
     const [partnerLeft, setPartnerLeft] = useState(false);
@@ -42,16 +43,14 @@ export default function Sky() {
 
 
     useEffect(() => {
-        if (!deviceId) return;
+        if (!isHydrated) return;
+        if (!deviceId || !pairId) { router.replace("/"); return; }
 
         let rowChannel: any;
         let presenceChannel: any;
         let cancelled = false;
 
         (async () => {
-            const pairId = await AsyncStorage.getItem(PAIR_ID_KEY);
-            if (!pairId) { router.replace("/"); return; }
-
             const { data } = await supabase.from("pairs").select("*").eq("id", pairId).single();
             if (!data || cancelled) { router.replace("/"); return; }
             setPair(data);
@@ -90,10 +89,10 @@ export default function Sky() {
             if (rowChannel) supabase.removeChannel(rowChannel);
             if (presenceChannel) supabase.removeChannel(presenceChannel);
         };
-    }, [deviceId]);
+    }, [isHydrated, deviceId, pairId]);
 
     // done - um try to make the function update status automatically (without reload) if someone has disconnected and reconnected
-    async function handleDisconnect() {
+    const handleDisconnect = async () => {
         if (pair && deviceId) {
             const amI_A = pair.device_a === deviceId;
             await supabase
@@ -101,17 +100,16 @@ export default function Sky() {
                 .update(amI_A ? { device_a_active: false } : { device_b_active: false })
                 .eq("id", pair.id);
         }
-        await AsyncStorage.removeItem(PAIR_ID_KEY);
-        await AsyncStorage.removeItem(PAIR_CODE_KEY);
+        await clearPair();
         router.replace("/");
-    }
+    };
 
-    function confirmDisconnect() {
+    const confirmDisconnect = () => {
         Alert.alert("Disconnect?", "You'll leave this connection. You can reconnect later with the same code.", [
             { text: "Cancel", style: "cancel" },
             { text: "Disconnect", style: "destructive", onPress: handleDisconnect },
         ]);
-    }
+    };
 
     return (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 20, padding: 24 }}>
