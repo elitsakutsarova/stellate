@@ -130,7 +130,10 @@ export default function Sky() {
                 // width, throwing off projection.x/y (computed from the actual
                 // screen width/height) and making the icon land somewhere
                 // that doesn't match where it's supposed to be.
-                <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}>
+                <View
+                    pointerEvents="box-none"
+                    style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}
+                >
             {/* temporary debug readout — remove once this locks on reliably */}
             <Text style={{ position: "absolute", top: 8, left: 12, color: "#888", fontSize: 12 }}>
                 {active.name} target az {active.bearing.toFixed(0)}° alt {active.altitude.toFixed(0)}°{"\n"}
