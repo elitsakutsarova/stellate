@@ -3,6 +3,7 @@ import { View, Text, Pressable, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { Share } from "react-native";
+import * as Linking from "expo-linking";
 import { supabase } from "@/lib/supabase";
 import { setPresence } from "@/lib/api";
 import { usePairStore } from "@/store/use-pair-store";
@@ -24,10 +25,25 @@ export default function Sky() {
     const [partnerOnline, setPartnerOnline] = useState(false);
     const [partnerLeft, setPartnerLeft] = useState(false);
 
-    const { coords, error: locationError, retry } = useLocation();
+    const { coords, error: locationError, canAskAgain, retry } = useLocation();
+
+    // Pops up whenever the error actually changes (e.g. first denied, or
+    // switches from "denied" to "go to Settings") — not on every repeated
+    // foreground re-check that still finds the same denial, since setting
+    // state to an identical value doesn't trigger a re-render/effect.
+    useEffect(() => {
+        if (!locationError) return;
+        Alert.alert("Location needed", locationError, [
+            { text: "Not now", style: "cancel" },
+            canAskAgain
+                ? { text: "Try again", onPress: retry }
+                : { text: "Open Settings", onPress: () => Linking.openSettings() },
+        ]);
+    }, [locationError, canAskAgain, retry]);
+
     const { active } = useSkyBodies(coords);
     const { width, height } = useWindowDimensions();
-    const { E, N, U, declination } = useDeviceOrientation();
+    const { E, N, U, declination } = useDeviceOrientation(!!coords);
     const projection = active
         ? projectToScreen(E, N, U, declination, active.bearing, active.altitude, width, height)
         : null;
@@ -107,7 +123,11 @@ export default function Sky() {
             // — don't act on stale data, and definitely don't navigate
             // anywhere on its behalf
             if (cancelled) return;
-            if (!data) { router.replace("/"); return; }
+            if (!data) {
+                Alert.alert("Couldn't load your connection", "Please try reconnecting with your code.");
+                router.replace("/");
+                return;
+            }
             setPair(data);
 
             const amI_A = data.device_a === deviceId;
@@ -149,7 +169,14 @@ export default function Sky() {
     // done - um try to make the function update status automatically (without reload) if someone has disconnected and reconnected
     async function handleDisconnect() {
         if (pair && deviceId) {
-            await setPresence(pair.id, deviceId, false);
+            try {
+                await setPresence(pair.id, deviceId, false);
+            } catch (err: any) {
+                // best-effort — still let them leave locally even if the
+                // server couldn't be reached to update presence, so a
+                // network hiccup can never trap someone on this screen
+                console.warn("Couldn't update presence on disconnect:", err.message);
+            }
         }
         await clearPair();
         router.replace("/");
@@ -167,8 +194,8 @@ export default function Sky() {
             {locationError && (
                 <View style={{ alignItems: "center", gap: 8 }}>
                     <Text style={{ color: "#e63946" }}>{locationError}</Text>
-                    <Pressable onPress={retry}>
-                        <Text style={{ color: "#457b9d" }}>Try again</Text>
+                    <Pressable onPress={canAskAgain ? retry : () => Linking.openSettings()}>
+                        <Text style={{ color: "#457b9d" }}>{canAskAgain ? "Try again" : "Open Settings"}</Text>
                     </Pressable>
                 </View>
             )}
@@ -190,7 +217,7 @@ export default function Sky() {
                     </Text>
                     {projection && (
                         <Text style={{ position: "absolute", bottom: 40, alignSelf: "center", color: "#888" }}>
-                            Turn your phone to look around
+                            Turn your phone to device around
                         </Text>
                     )}
                     {projection && !projection.visible && (

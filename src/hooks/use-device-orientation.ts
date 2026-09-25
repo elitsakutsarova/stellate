@@ -47,7 +47,14 @@ function computeBasis(gravity: Vec3, magnetic: Vec3) {
 // (magnetic → true north correction, from Location's heading, which already
 // knows it for your location) lets callers work in true bearings, matching
 // SunCalc.
-export function useDeviceOrientation() {
+// hasLocationPermission gates the compass heading watcher below — without
+// it, watchHeadingAsync would fire on mount regardless of whether
+// useLocation has actually gone through its own permission flow yet, and
+// its native implementation triggers its own implicit system prompt if
+// permission isn't already granted. That's a second, uncoordinated way to
+// trigger the real OS dialog, bypassing the "check silently, show our own
+// message, only request on an explicit tap" flow entirely.
+export function useDeviceOrientation(hasLocationPermission: boolean) {
     const [basis, setBasis] = useState(() => computeBasis({ x: 0, y: 0, z: 1 }, { x: 0, y: 1, z: -1 }));
     const [azimuth, setAzimuth] = useState(0);
     const [altitude, setAltitude] = useState(0);
@@ -58,6 +65,7 @@ export function useDeviceOrientation() {
     const declinationRef = useRef(0);
 
     useEffect(() => {
+        if (!hasLocationPermission) return;
         let sub: Location.LocationSubscription | undefined;
         (async () => {
             sub = await Location.watchHeadingAsync((h) => {
@@ -68,7 +76,7 @@ export function useDeviceOrientation() {
             });
         })();
         return () => sub?.remove();
-    }, []);
+    }, [hasLocationPermission]);
 
     function recompute() {
         const { E, N, U } = computeBasis(gravity.current, magnetic.current);
