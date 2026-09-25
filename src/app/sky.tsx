@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { Share } from "react-native";
 import { supabase } from "@/lib/supabase";
+import { setPresence } from "@/lib/api";
 import { usePairStore } from "@/store/use-pair-store";
 import * as Haptics from "expo-haptics";
 import { useLocation } from "@/hooks/use-location";
@@ -101,7 +102,12 @@ export default function Sky() {
 
         (async () => {
             const { data } = await supabase.from("pairs").select("*").eq("id", pairId).single();
-            if (!data || cancelled) { router.replace("/"); return; }
+            // the component isn't around anymore (e.g. React's dev-mode
+            // mount/unmount/remount check, or a real navigation elsewhere)
+            // — don't act on stale data, and definitely don't navigate
+            // anywhere on its behalf
+            if (cancelled) return;
+            if (!data) { router.replace("/"); return; }
             setPair(data);
 
             const amI_A = data.device_a === deviceId;
@@ -143,11 +149,7 @@ export default function Sky() {
     // done - um try to make the function update status automatically (without reload) if someone has disconnected and reconnected
     async function handleDisconnect() {
         if (pair && deviceId) {
-            const amI_A = pair.device_a === deviceId;
-            await supabase
-                .from("pairs")
-                .update(amI_A ? { device_a_active: false } : { device_b_active: false })
-                .eq("id", pair.id);
+            await setPresence(pair.id, deviceId, false);
         }
         await clearPair();
         router.replace("/");
