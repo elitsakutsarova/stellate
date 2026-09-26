@@ -4,14 +4,14 @@ import * as Location from "expo-location";
 
 export type Vec3 = { x: number; y: number; z: number };
 
-function normalize(v: Vec3): Vec3 {
+export function normalize(v: Vec3): Vec3 {
     const len = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z) || 1;
     return { x: v.x / len, y: v.y / len, z: v.z / len };
 }
 function cross(a: Vec3, b: Vec3): Vec3 {
     return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x };
 }
-function lerpVec(a: Vec3, b: Vec3, t: number): Vec3 {
+export function lerpVec(a: Vec3, b: Vec3, t: number): Vec3 {
     return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t };
 }
 
@@ -54,6 +54,13 @@ function computeBasis(gravity: Vec3, magnetic: Vec3) {
 // permission isn't already granted. That's a second, uncoordinated way to
 // trigger the real OS dialog, bypassing the "check silently, show our own
 // message, only request on an explicit tap" flow entirely.
+// ~30 readings a second; each reading moves this fraction of the way to the
+// new value. Higher = snappier but shakier. (The sky adds its own per-frame
+// easing on top — see SMOOTHING in sky-scene.tsx.)
+const SENSOR_INTERVAL_MS = 33;
+const GRAVITY_SMOOTHING = 0.1;
+const MAGNETIC_SMOOTHING = 0.06;
+
 export function useDeviceOrientation(hasLocationPermission: boolean) {
     const [basis, setBasis] = useState(() => computeBasis({ x: 0, y: 0, z: 1 }, { x: 0, y: 1, z: -1 }));
     const [azimuth, setAzimuth] = useState(0);
@@ -91,26 +98,28 @@ export function useDeviceOrientation(hasLocationPermission: boolean) {
     }
 
     useEffect(() => {
-        Accelerometer.setUpdateInterval(100);
+        Accelerometer.setUpdateInterval(SENSOR_INTERVAL_MS);
         const sub = Accelerometer.addListener(({ x, y, z }) => {
             // Accelerometer reports the gravity vector itself (pointing down —
             // e.g. z = -1g lying flat screen-up per Apple's CMAccelerometerData
             // docs), not the reaction force pointing up. Negate so `gravity`
             // consistently means "up" for computeBasis.
-            gravity.current = lerpVec(gravity.current, { x: -x, y: -y, z: -z }, 0.08);
+            gravity.current = lerpVec(gravity.current, { x: -x, y: -y, z: -z }, GRAVITY_SMOOTHING);
             recompute();
         });
         return () => sub.remove();
     }, []);
 
     useEffect(() => {
-        Magnetometer.setUpdateInterval(100);
+        Magnetometer.setUpdateInterval(SENSOR_INTERVAL_MS);
         const sub = Magnetometer.addListener(({ x, y, z }) => {
             // Magnetometer is noisier than the accelerometer (more prone to
             // nearby-metal/electronics interference), and it's what mostly
             // drives the arrow's rotation, so smooth it a bit harder.
-            magnetic.current = lerpVec(magnetic.current, { x, y, z }, 0.08);
-            recompute();
+            // No recompute() here: the accelerometer runs at the same rate and
+            // already recomputes, so doing it twice would just double the
+            // re-renders for no visible gain.
+            magnetic.current = lerpVec(magnetic.current, { x, y, z }, MAGNETIC_SMOOTHING);
         });
         return () => sub.remove();
     }, []);

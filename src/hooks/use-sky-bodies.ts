@@ -5,8 +5,14 @@ import type { Vec3 } from "./use-device-orientation";
 const SunCalc = require("suncalc");
 type Body = { altitude: number; bearing: number; visible: boolean };
 
-const FOV = 60; // degrees of view the "window" covers — tune this to taste
-const FOCAL = 1 / Math.tan((FOV / 2) * (Math.PI / 180));
+// Degrees of sky the screen shows from top to bottom (roughly a phone camera
+// in portrait) — tune this to taste. Left/right follows from the screen's
+// shape, because both directions use the same scale (like a photo), so the
+// sky is never stretched and the sun/moon stay round.
+const FOV_VERTICAL = 70;
+
+// pixels per unit of "sideways / forward" — one number for both x and y
+export const focalPx = (height: number) => height / 2 / Math.tan((FOV_VERTICAL / 2) * (Math.PI / 180));
 
 function targetVector(azimuthDeg: number, altitudeDeg: number): Vec3 {
     const az = azimuthDeg * (Math.PI / 180);
@@ -48,8 +54,9 @@ export function projectToScreen(
     const angleFromCenter = (Math.acos(Math.min(1, Math.max(-1, zCam))) * 180) / Math.PI;
 
     const depth = zCam > 0.001 ? zCam : 0.001;
-    const x = width / 2 + (xCam / depth) * FOCAL * (width / 2);
-    const y = height / 2 - (yCam / depth) * FOCAL * (height / 2);
+    const f = focalPx(height);
+    const x = width / 2 + (xCam / depth) * f;
+    const y = height / 2 - (yCam / depth) * f;
 
     // A compass arrow at the screen border: cast a ray from the center in
     // the direction of (dRight, dUp) and find where it hits the (inset)
@@ -71,20 +78,86 @@ export function projectToScreen(
 
     return {
         x, y,
-        // only actually in the frame, like looking through a viewfinder —
-        // it should appear as it enters and disappear as it leaves, not
-        // stick to the screen edge from anywhere in front of you
-        visible: zCam > 0 && angleFromCenter < FOV / 2,
+        // actually inside the screen rectangle (and in front of you, not
+        // behind) — "on screen" means exactly what you can see
+        visible: zCam > 0 && x >= 0 && x <= width && y >= 0 && y <= height,
         angleFromCenter,
         arrowX, arrowY,
         arrowDeg: (arrowAngleRad * 180) / Math.PI,
-        // no rotation behavior defined for the sun/moon icon itself yet —
-        // placeholder field so the icon's animation code has a value to use
-        iconRotation: 0,
         // screen-relative direction to the target, for the off-screen hint —
         // signs only, roll-correct (unlike a raw compass-bearing diff)
         dRight: xCam,
         dUp: yCam,
+    };
+}
+
+// Where the ground is on screen. The horizon is a flat circle around you, and
+// a perspective view always turns a flat circle through your eye into a
+// straight line — so "above or below the horizon" is a simple linear test per
+// screen point: aboveHorizon(x, y) > 0 is sky, < 0 is ground. Built from the
+// same camera maths as projectToScreen (xCam = -dx, yCam = -dy, zCam = dz),
+// applied to world "up".
+export function groundPolygon(U: Vec3, width: number, height: number) {
+    const up = { x: -U.x, y: -U.y, z: U.z }; // world up, in camera coords
+    const kx = focalPx(height);
+    const ky = kx; // same scale both ways, matching projectToScreen
+    const aboveHorizon = (x: number, y: number) =>
+        (up.x * (x - width / 2)) / kx - (up.y * (y - height / 2)) / ky + up.z;
+
+    // Walk the screen's 4 corners, keeping the ground ones and adding the
+    // point where each edge crosses the horizon (clipping the screen
+    // rectangle against the horizon line).
+    const corners = [[0, 0], [width, 0], [width, height], [0, height]];
+    const ground: number[][] = [];
+    const horizon: number[][] = [];
+    corners.forEach(([x1, y1], i) => {
+        const [x2, y2] = corners[(i + 1) % 4];
+        const a = aboveHorizon(x1, y1);
+        const b = aboveHorizon(x2, y2);
+        if (a < 0) ground.push([x1, y1]);
+        if (a < 0 !== b < 0) {
+            const t = a / (a - b);
+            const crossing = [x1 + (x2 - x1) * t, y1 + (y2 - y1) * t];
+            ground.push(crossing);
+            horizon.push(crossing);
+        }
+    });
+    // screen direction pointing "down into the ground", perpendicular to the
+    // horizon — lets the ground fade in from the horizon instead of being a
+    // flat wall. It's the opposite of aboveHorizon's slope (a, b).
+    const a = up.x / kx;
+    const b = -up.y / ky;
+    const len = Math.hypot(a, b) || 1;
+    const groundDir = { x: -a / len, y: -b / len };
+    return { ground, horizon, groundDir };
+}
+
+// The reverse of projectToScreen: a made-up E/N/U for a phone aimed exactly
+// at (bearing, altitude) with the horizon level — so projectToScreen puts
+// that target dead centre. Development only: lets a device with poor
+// sensors (e.g. a tablet) test everything that happens once you're
+// "looking". Written in the same camera convention projectToScreen uses
+// (xCam = -dx, yCam = -dy, zCam = dz), so the two always agree.
+export function basisLookingAt(bearing: number, altitude: number, declination: number) {
+    const f = targetVector(bearing - declination, altitude); // forward, in world (east, north, up)
+    // "up on screen" = world up with the forward part removed; straight
+    // overhead there is no such direction, so fall back to north
+    const worldUp = Math.abs(f.z) > 0.999 ? { x: 0, y: 1, z: 0 } : { x: 0, y: 0, z: 1 };
+    const d = worldUp.x * f.x + worldUp.y * f.y + worldUp.z * f.z;
+    const upLen = Math.hypot(worldUp.x - d * f.x, worldUp.y - d * f.y, worldUp.z - d * f.z);
+    const up = { x: (worldUp.x - d * f.x) / upLen, y: (worldUp.y - d * f.y) / upLen, z: (worldUp.z - d * f.z) / upLen };
+    const right = { x: f.y * up.z - f.z * up.y, y: f.z * up.x - f.x * up.z, z: f.x * up.y - f.y * up.x }; // f × up
+
+    // device axes in world coords (negated to match xCam = -dx, yCam = -dy)
+    const xAxis = { x: -right.x, y: -right.y, z: -right.z };
+    const yAxis = { x: -up.x, y: -up.y, z: -up.z };
+    const zAxis = f;
+    // E/N/U are the same numbers read the other way: world east/north/up
+    // expressed in device axes
+    return {
+        E: { x: xAxis.x, y: yAxis.x, z: zAxis.x },
+        N: { x: xAxis.y, y: yAxis.y, z: zAxis.y },
+        U: { x: xAxis.z, y: yAxis.z, z: zAxis.z },
     };
 }
 

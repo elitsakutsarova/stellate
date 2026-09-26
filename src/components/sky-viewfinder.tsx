@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
-import { View, Text, useWindowDimensions } from "react-native";
+import { View, Text } from "react-native";
 import * as Haptics from "expo-haptics";
+import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
 import { projectToScreen } from "@/hooks/use-sky-bodies";
 import type { Vec3 } from "@/hooks/use-device-orientation";
 import type { Looking } from "@/hooks/use-pair-presence";
@@ -16,20 +17,21 @@ type Props = {
     onLookingChange: (looking: Looking) => void;
 };
 
-// The AR-style sky icon/arrow: projects the sun/moon onto the screen from
-// the device's current attitude, smooths that position every frame, and
-// gives a haptic tap the moment it comes on screen. Self-contained — sky.tsx
+// Guidance on top of the drawn sky (SkyScene draws the sun/moon itself): an
+// arrow at the screen edge pointing to the sun/moon while it's off screen,
+// smoothed every frame, and a haptic tap the moment it comes on screen.
+// Self-contained — sky.tsx
 // only needs to know where the target is (active) and which way the
 // device is pointing (E/N/U/declination), not how any of this works.
 export function SkyViewfinder({ active, E, N, U, declination, onLookingChange }: Props) {
-    const { width, height } = useWindowDimensions();
+    const { width, height } = useSafeAreaFrame();
+    const insets = useSafeAreaInsets();
     const projection = active
         ? projectToScreen(E, N, U, declination, active.bearing, active.altitude, width, height)
         : null;
 
     // what's on screen right now — "sun", "moon", or null if nothing is
     const lookingAt: Looking = active && projection?.visible ? active.name : null;
-    const iconRef = useRef<View | null>(null);
     const arrowRef = useRef<View | null>(null);
     // Kept in sync every render (not via an effect) so the animation loop
     // below can always read the latest projection without needing to
@@ -37,7 +39,6 @@ export function SkyViewfinder({ active, E, N, U, declination, onLookingChange }:
     // it directly would tear down and reset the loop on every sensor tick.
     const projectionRef = useRef(projection);
     projectionRef.current = projection;
-    const targetPos = useRef({ x: projection?.x ?? 0, y: projection?.y ?? 0 });
     const arrowState = useRef({
         x: projection?.arrowX ?? 0,
         y: projection?.arrowY ?? 0,
@@ -49,16 +50,6 @@ export function SkyViewfinder({ active, E, N, U, declination, onLookingChange }:
         function loop() {
             animationFrame = requestAnimationFrame(loop);
             const p = projectionRef.current;
-            targetPos.current.x += ((p?.x ?? targetPos.current.x) - targetPos.current.x) * 0.1;
-            targetPos.current.y += ((p?.y ?? targetPos.current.y) - targetPos.current.y) * 0.1;
-            iconRef.current?.setNativeProps({
-                style: {
-                    left: targetPos.current.x - 24,
-                    top: targetPos.current.y - 24,
-                    transform: [{ rotate: `${p?.iconRotation ?? 0}deg` }],
-                },
-            });
-
             if (p) {
                 arrowState.current.x += (p.arrowX - arrowState.current.x) * 0.1;
                 arrowState.current.y += (p.arrowY - arrowState.current.y) * 0.1;
@@ -86,7 +77,7 @@ export function SkyViewfinder({ active, E, N, U, declination, onLookingChange }:
         onLookingChange(lookingAt);
     }, [lookingAt, onLookingChange]);
 
-    if (!active) return null;
+    if (!active || !projection || projection.visible) return null;
 
     return (
         // Spans the full screen explicitly — a parent using alignItems:
@@ -98,23 +89,12 @@ export function SkyViewfinder({ active, E, N, U, declination, onLookingChange }:
             pointerEvents="box-none"
             style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}
         >
-            {projection && !projection.visible && (
-                <Text style={{ position: "absolute", bottom: 40, alignSelf: "center", color: "#888" }}>
-                    Follow the arrow to find the {active.name}
-                </Text>
-            )}
-            {projection && !projection.visible && (
-                <View ref={arrowRef} style={{ position: "absolute" }}>
-                    <Text style={{ fontSize: 32, color: "#888" }}>▲</Text>
-                </View>
-            )}
-            {projection?.visible && (
-                <View ref={iconRef} style={{ position: "absolute", zIndex: 10 }}>
-                    <Text style={{ fontSize: 48 }}>
-                        {active.name === "sun" ? "☀️" : "🌙"}
-                    </Text>
-                </View>
-            )}
+            <Text style={{ position: "absolute", top: insets.top + 16, alignSelf: "center", color: "#C8CEF5" }}>
+                Follow the arrow to find the {active.name}
+            </Text>
+            <View ref={arrowRef} style={{ position: "absolute" }}>
+                <Text style={{ fontSize: 32, color: "#C8CEF5" }}>▲</Text>
+            </View>
         </View>
     );
 }
