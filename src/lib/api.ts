@@ -13,6 +13,17 @@ const API_URL = __DEV__ && devHost ? `http://${devHost}:${SERVER_PORT}` : (proce
 
 type PairResponse = { id: string; code: string };
 
+// status is the HTTP status the server answered with (403, 404, ...), or
+// undefined if the server couldn't be reached at all — lets callers tell
+// "the server said no" apart from "no connection right now".
+export class ApiError extends Error {
+    status?: number;
+    constructor(message: string, status?: number) {
+        super(message);
+        this.status = status;
+    }
+}
+
 const request = async <T>(path: string, body: Record<string, unknown>): Promise<T> => {
     let res: Response;
     try {
@@ -23,7 +34,7 @@ const request = async <T>(path: string, body: Record<string, unknown>): Promise<
         });
     } catch {
         // fetch itself failed — server unreachable, wifi off, wrong LAN IP, etc.
-        throw new Error("Couldn't reach the server. Check that it's running and your phone is on the same network.");
+        throw new ApiError("Couldn't reach the server. Check that it's running and your phone is on the same network.");
     }
 
     // the server doesn't always respond with JSON — e.g. a 404 for a route
@@ -36,7 +47,7 @@ const request = async <T>(path: string, body: Record<string, unknown>): Promise<
     }
 
     if (!res.ok) {
-        throw new Error(data?.error ?? `Something went wrong (${res.status}). Please try again.`);
+        throw new ApiError(data?.error ?? `Something went wrong (${res.status}). Please try again.`, res.status);
     }
     return data as T;
 };

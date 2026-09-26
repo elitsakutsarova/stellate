@@ -19,7 +19,7 @@ export default function Sky() {
     const isHydrated = usePairStore((state) => state.isHydrated);
     const clearPair = usePairStore((state) => state.clearPair);
 
-    const { pair, partnerOnline, partnerLeft } = usePairPresence(isHydrated, deviceId, pairId);
+    const { pair, partnerOnline, partnerLeft, offline } = usePairPresence(isHydrated, deviceId, pairId);
 
     const { coords, error: locationError, canAskAgain, retry } = useLocation();
 
@@ -74,6 +74,10 @@ export default function Sky() {
             )}
 
             <SkyViewfinder active={active} E={E} N={N} U={U} declination={declination} />
+
+            {offline && (
+                <Text style={{ color: "#888" }}>Can't reach the server, retrying…</Text>
+            )}
 
             {partnerLeft && (
                 <View style={{ backgroundColor: "#f4a26140", padding: 12, borderRadius: 10 }}>
