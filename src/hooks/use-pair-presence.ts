@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useRouter } from "expo-router";
 import { Alert } from "react-native";
 import * as Crypto from "expo-crypto";
@@ -8,10 +9,16 @@ import { pairChannel, PAIR_CHANGED_EVENT } from "@/lib/constants";
 import { usePairStore } from "@/store/use-pair-store";
 
 const RETRY_MS = 5000;
+// how long "looking" must stay the same before we tell the other phone —
+// stops the status flickering when the sun/moon sits right at the screen edge
+const LOOKING_DELAY_MS = 1000;
+
+export type Looking = "sun" | "moon" | null;
+type PresencePayload = { online: boolean; looking: Looking };
 
 // Loads the current pair (through our server — the anon key can't read the
 // pairs table at all) and keeps it live over one Supabase Realtime channel:
-// - presence: is my partner in the app right now?
+// - presence: is my partner in the app right now, and what are they looking at?
 // - "pair-changed" broadcasts from the server: re-fetch status (e.g. partner
 //   left or came back)
 // Only ever used on the sky screen, so this stays a plain hook rather than
@@ -20,8 +27,15 @@ export function usePairPresence(isHydrated: boolean, deviceId: string | null, pa
     const router = useRouter();
     const [pair, setPair] = useState<PairStatus | null>(null);
     const [partnerOnline, setPartnerOnline] = useState(false);
+    const [partnerLooking, setPartnerLooking] = useState<Looking>(null);
     const [offline, setOffline] = useState(false); // server unreachable, retrying
     const clearPair = usePairStore((state) => state.clearPair);
+
+    // Refs, not state: setLooking (below) lives outside the effect but needs
+    // the effect's current channel, and changing them shouldn't re-render.
+    const channelRef = useRef<RealtimeChannel | null>(null);
+    const lookingRef = useRef<Looking>(null); // what we last told the other phone
+    const lookingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
     useEffect(() => {
         if (!isHydrated) return;
@@ -67,11 +81,17 @@ export function usePairPresence(isHydrated: boolean, deviceId: string | null, pa
         const channel = supabase.channel(pairChannel(pairId), {
             config: { presence: { key: presenceKey } },
         });
+        channelRef.current = channel;
         channel
             .on("broadcast", { event: PAIR_CHANGED_EVENT }, refresh)
             .on("presence", { event: "sync" }, () => {
-                const others = Object.keys(channel.presenceState()).filter((k) => k !== presenceKey);
+                const state = channel.presenceState<PresencePayload>();
+                const others = Object.keys(state).filter((k) => k !== presenceKey);
                 setPartnerOnline(others.length > 0);
+                // each key holds a list of payloads (one per open connection);
+                // the last one is the most recent
+                const latest = others.length > 0 ? state[others[0]].at(-1) : undefined;
+                setPartnerLooking(latest?.looking ?? null);
             })
             .subscribe(async (status) => {
                 // Realtime reconnects by itself; this just shows the "retrying"
@@ -81,7 +101,9 @@ export function usePairPresence(isHydrated: boolean, deviceId: string | null, pa
                     return;
                 }
                 if (status !== "SUBSCRIBED") return;
-                await channel.track({ online: true });
+                // lookingRef, not null: after a reconnect, re-send what we're
+                // actually looking at right now
+                await channel.track({ online: true, looking: lookingRef.current });
                 // fetch only once we're listening, so a change that happens in
                 // between can't slip past unnoticed
                 refresh();
@@ -90,9 +112,30 @@ export function usePairPresence(isHydrated: boolean, deviceId: string | null, pa
         return () => {
             cancelled = true;
             clearTimeout(retryTimer);
+            clearTimeout(lookingTimer.current);
+            channelRef.current = null;
             supabase.removeChannel(channel);
         };
     }, [isHydrated, deviceId, pairId, clearPair]);
 
-    return { pair, partnerOnline, partnerLeft: pair?.partnerLeft ?? false, offline };
+    // Called by the viewfinder whenever the sun/moon enters or leaves the
+    // screen. Waits LOOKING_DELAY_MS first; if it changes again meanwhile,
+    // the timer restarts, so only a settled value is ever sent.
+    const setLooking = useCallback((looking: Looking) => {
+        clearTimeout(lookingTimer.current);
+        lookingTimer.current = setTimeout(() => {
+            if (looking === lookingRef.current) return; // nothing new to tell
+            lookingRef.current = looking;
+            channelRef.current?.track({ online: true, looking });
+        }, LOOKING_DELAY_MS);
+    }, []);
+
+    return {
+        pair,
+        partnerOnline,
+        partnerLooking,
+        partnerLeft: pair?.partnerLeft ?? false,
+        offline,
+        setLooking,
+    };
 }

@@ -3,6 +3,7 @@ import { View, Text, useWindowDimensions } from "react-native";
 import * as Haptics from "expo-haptics";
 import { projectToScreen } from "@/hooks/use-sky-bodies";
 import type { Vec3 } from "@/hooks/use-device-orientation";
+import type { Looking } from "@/hooks/use-pair-presence";
 
 type ActiveBody = { name: "sun" | "moon"; altitude: number; bearing: number; visible: boolean };
 
@@ -12,21 +13,22 @@ type Props = {
     N: Vec3;
     U: Vec3;
     declination: number;
+    onLookingChange: (looking: Looking) => void;
 };
 
 // The AR-style sky icon/arrow: projects the sun/moon onto the screen from
 // the device's current attitude, smooths that position every frame, and
-// gives a haptic tap the moment it's centered. Self-contained — sky.tsx
+// gives a haptic tap the moment it comes on screen. Self-contained — sky.tsx
 // only needs to know where the target is (active) and which way the
 // device is pointing (E/N/U/declination), not how any of this works.
-export function SkyViewfinder({ active, E, N, U, declination }: Props) {
+export function SkyViewfinder({ active, E, N, U, declination, onLookingChange }: Props) {
     const { width, height } = useWindowDimensions();
     const projection = active
         ? projectToScreen(E, N, U, declination, active.bearing, active.altitude, width, height)
         : null;
 
-    const isAligned = projection ? projection.visible && projection.angleFromCenter < 8 : false;
-    const wasAligned = useRef(false);
+    // what's on screen right now — "sun", "moon", or null if nothing is
+    const lookingAt: Looking = active && projection?.visible ? active.name : null;
     const iconRef = useRef<View | null>(null);
     const arrowRef = useRef<View | null>(null);
     // Kept in sync every render (not via an effect) so the animation loop
@@ -77,12 +79,12 @@ export function SkyViewfinder({ active, E, N, U, declination }: Props) {
         return () => cancelAnimationFrame(animationFrame);
     }, []);
 
+    // Runs only when lookingAt actually changes: tap as the sun/moon comes
+    // on screen (not while it stays there), and tell sky.tsx either way.
     useEffect(() => {
-        if (isAligned && !wasAligned.current) {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        }
-        wasAligned.current = isAligned;
-    }, [isAligned]);
+        if (lookingAt) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        onLookingChange(lookingAt);
+    }, [lookingAt, onLookingChange]);
 
     if (!active) return null;
 

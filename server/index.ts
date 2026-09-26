@@ -182,7 +182,7 @@ const joinPair = async (req: express.Request, res: express.Response) => {
     // claiming the open seat
     if (!existing.device_b) {
         if (isExpired(existing.created_at)) {
-            res.status(404).json({ error: "This code has expired. Ask your partner for a new one." });
+            res.status(404).json({ error: "This code has expired. Ask your special someone for a new one." });
             return;
         }
         const { data, error } = await supabase

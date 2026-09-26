@@ -19,7 +19,7 @@ export default function Sky() {
     const isHydrated = usePairStore((state) => state.isHydrated);
     const clearPair = usePairStore((state) => state.clearPair);
 
-    const { pair, partnerOnline, partnerLeft, offline } = usePairPresence(isHydrated, deviceId, pairId);
+    const { pair, partnerOnline, partnerLooking, partnerLeft, offline, setLooking } = usePairPresence(isHydrated, deviceId, pairId);
 
     const { coords, error: locationError, canAskAgain, retry } = useLocation();
 
@@ -73,7 +73,7 @@ export default function Sky() {
                 </View>
             )}
 
-            <SkyViewfinder active={active} E={E} N={N} U={U} declination={declination} />
+            <SkyViewfinder active={active} E={E} N={N} U={U} declination={declination} onLookingChange={setLooking} />
 
             {offline && (
                 <Text style={{ color: "#888" }}>Can't reach the server, retrying…</Text>
@@ -81,12 +81,16 @@ export default function Sky() {
 
             {partnerLeft && (
                 <View style={{ backgroundColor: "#f4a26140", padding: 12, borderRadius: 10 }}>
-                    <Text>Your partner left this connection.</Text>
+                    <Text>Your special someone left this connection.</Text>
                 </View>
             )}
             {!partnerLeft && (
                 <Text style={{ color: partnerOnline ? "#2a9d8f" : "#888" }}>
-                    {partnerOnline ? "● Partner is here now" : "○ Partner isn't in the app right now"}
+                    {partnerLooking
+                        ? `● Your special someone is looking at the ${partnerLooking} right now`
+                        : partnerOnline
+                            ? "● Your special someone is here now"
+                            : "○ Your special someone isn't in the app right now"}
                 </Text>
             )}
 
