@@ -19,7 +19,7 @@ export function lerpVec(a: Vec3, b: Vec3, t: number): Vec3 {
 // both platforms: x = screen right, y = towards the top edge, z = out of
 // the screen towards your face.
 //
-// This deliberately avoids expo-sensors' DeviceMotion.rotation — despite
+// This deliberately avoids expo-sensors' DeviceMotion.rotation - despite
 // being named alpha/beta/gamma like the W3C device-orientation spec, on iOS
 // it's actually CMAttitude.yaw/pitch/roll passed straight through in
 // radians (the docs' "expressed in degrees" is wrong), and on Android it's
@@ -27,7 +27,7 @@ export function lerpVec(a: Vec3, b: Vec3, t: number): Vec3 {
 // are real Euler angles, just in different rotation conventions than the
 // W3C one and from each other, so building a rotation matrix out of them
 // with one shared formula silently gives the wrong attitude at any real
-// tilt — which is why the sky view could never actually lock onto the sun.
+// tilt - which is why the sky view could never actually lock onto the sun.
 //
 // Raw gravity + raw magnetic field don't have that problem: they're just
 // vectors in the device's own axes, consistent on both platforms. E/N/U
@@ -42,12 +42,12 @@ function computeBasis(gravity: Vec3, magnetic: Vec3) {
 }
 
 // E, N, U are device-local unit vectors pointing at *magnetic* east, north
-// and up — i.e. "if you wanted to point the phone at magnetic north right
+// and up - i.e. "if you wanted to point the phone at magnetic north right
 // now, here's what that looks like in the phone's own x/y/z axes." declination
 // (magnetic → true north correction, from Location's heading, which already
 // knows it for your location) lets callers work in true bearings, matching
 // SunCalc.
-// hasLocationPermission gates the compass heading watcher below — without
+// hasLocationPermission gates the compass heading watcher below - without
 // it, watchHeadingAsync would fire on mount regardless of whether
 // useLocation has actually gone through its own permission flow yet, and
 // its native implementation triggers its own implicit system prompt if
@@ -56,7 +56,7 @@ function computeBasis(gravity: Vec3, magnetic: Vec3) {
 // message, only request on an explicit tap" flow entirely.
 // ~30 readings a second; each reading moves this fraction of the way to the
 // new value. Higher = snappier but shakier. (The sky adds its own per-frame
-// easing on top — see SMOOTHING in sky-scene.tsx.)
+// easing on top - see SMOOTHING in sky-scene.tsx.)
 const SENSOR_INTERVAL_MS = 33;
 const GRAVITY_SMOOTHING = 0.1;
 const MAGNETIC_SMOOTHING = 0.06;
@@ -100,7 +100,7 @@ export function useDeviceOrientation(hasLocationPermission: boolean) {
     useEffect(() => {
         Accelerometer.setUpdateInterval(SENSOR_INTERVAL_MS);
         const sub = Accelerometer.addListener(({ x, y, z }) => {
-            // Accelerometer reports the gravity vector itself (pointing down —
+            // Accelerometer reports the gravity vector itself (pointing down -
             // e.g. z = -1g lying flat screen-up per Apple's CMAccelerometerData
             // docs), not the reaction force pointing up. Negate so `gravity`
             // consistently means "up" for computeBasis.

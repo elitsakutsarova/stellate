@@ -8,12 +8,12 @@ type Body = { altitude: number; bearing: number; visible: boolean };
 export type SkyBody = Body & { name: "sun" | "moon" };
 
 // Degrees of sky the screen shows from top to bottom (roughly a phone camera
-// in portrait) — tune this to taste. Left/right follows from the screen's
+// in portrait) - tune this to taste. Left/right follows from the screen's
 // shape, because both directions use the same scale (like a photo), so the
 // sky is never stretched and the sun/moon stay round.
 const FOV_VERTICAL = 70;
 
-// pixels per unit of "sideways / forward" — one number for both x and y
+// pixels per unit of "sideways / forward" - one number for both x and y
 export const focalPx = (height: number) => height / 2 / Math.tan((FOV_VERTICAL / 2) * (Math.PI / 180));
 
 function targetVector(azimuthDeg: number, altitudeDeg: number): Vec3 {
@@ -23,8 +23,8 @@ function targetVector(azimuthDeg: number, altitudeDeg: number): Vec3 {
 }
 
 // Projects a target's real-world (bearing, altitude) into screen space
-// through the device's actual attitude — E/N/U from useDeviceOrientation,
-// the device-local directions of magnetic east/north/up — rather than a
+// through the device's actual attitude - E/N/U from useDeviceOrientation,
+// the device-local directions of magnetic east/north/up - rather than a
 // flat az/alt-to-x/y mapping. This is what makes rolling the phone (tilting
 // it sideways) rotate the sky correctly, like looking through a real
 // window, and keeps working right up to the zenith. declination converts
@@ -42,16 +42,16 @@ export function projectToScreen(
     const dz = t.x * E.z + t.y * N.z + t.z * U.z;
 
     // "Forward" is the direction the screen face points, not the back of
-    // the phone — confirmed by holding the phone with the screen aimed at
+    // the phone - confirmed by holding the phone with the screen aimed at
     // the real sun (local (0,0,1) rather than (0,0,-1)). Right and up both
-    // flip sign along with it — confirmed on-device: with only forward+right
+    // flip sign along with it - confirmed on-device: with only forward+right
     // flipped, left/right tracked correctly but tilting up/down was inverted,
     // so up needs the flip too.
     const xCam = -dx;
     const yCam = -dy;
     const zCam = dz;
 
-    // total angle between where the phone points and the target — used
+    // total angle between where the phone points and the target - used
     // for visibility and as a roll-aware stand-in for "how aligned are we"
     const angleFromCenter = (Math.acos(Math.min(1, Math.max(-1, zCam))) * 180) / Math.PI;
 
@@ -62,7 +62,7 @@ export function projectToScreen(
 
     // A compass arrow at the screen border: cast a ray from the center in
     // the direction of (dRight, dUp) and find where it hits the (inset)
-    // screen rectangle — not a circle, so it reaches all the way to the
+    // screen rectangle - not a circle, so it reaches all the way to the
     // edges, including the corners. Driven purely by that direction (not
     // the FOV-based x/y above), so it stays well-behaved even directly
     // behind you, where the perspective-divided x/y blow up or flip sign.
@@ -81,12 +81,12 @@ export function projectToScreen(
     return {
         x, y,
         // actually inside the screen rectangle (and in front of you, not
-        // behind) — "on screen" means exactly what you can see
+        // behind) - "on screen" means exactly what you can see
         visible: zCam > 0 && x >= 0 && x <= width && y >= 0 && y <= height,
         angleFromCenter,
         arrowX, arrowY,
         arrowDeg: (arrowAngleRad * 180) / Math.PI,
-        // screen-relative direction to the target, for the off-screen hint —
+        // screen-relative direction to the target, for the off-screen hint -
         // signs only, roll-correct (unlike a raw compass-bearing diff)
         dRight: xCam,
         dUp: yCam,
@@ -95,7 +95,7 @@ export function projectToScreen(
 
 // Where the ground is on screen. The horizon is a flat circle around you, and
 // a perspective view always turns a flat circle through your eye into a
-// straight line — so "above or below the horizon" is a simple linear test per
+// straight line - so "above or below the horizon" is a simple linear test per
 // screen point: aboveHorizon(x, y) > 0 is sky, < 0 is ground. Built from the
 // same camera maths as projectToScreen (xCam = -dx, yCam = -dy, zCam = dz),
 // applied to world "up".
@@ -125,7 +125,7 @@ export function groundPolygon(U: Vec3, width: number, height: number) {
         }
     });
     // screen direction pointing "down into the ground", perpendicular to the
-    // horizon — lets the ground fade in from the horizon instead of being a
+    // horizon - lets the ground fade in from the horizon instead of being a
     // flat wall. It's the opposite of aboveHorizon's slope (a, b).
     const a = up.x / kx;
     const b = -up.y / ky;
@@ -135,7 +135,7 @@ export function groundPolygon(U: Vec3, width: number, height: number) {
 }
 
 // The reverse of projectToScreen: a made-up E/N/U for a phone aimed exactly
-// at (bearing, altitude) with the horizon level — so projectToScreen puts
+// at (bearing, altitude) with the horizon level - so projectToScreen puts
 // that target dead centre. Development only: lets a device with poor
 // sensors (e.g. a tablet) test everything that happens once you're
 // "looking". Written in the same camera convention projectToScreen uses
@@ -167,7 +167,7 @@ export function basisLookingAt(bearing: number, altitude: number, declination: n
 // bearing is a compass heading: 0=north, 90=east, 180=south, 270=west
 
 // The installed suncalc (2.0.2) already returns azimuth/altitude in degrees,
-// with azimuth already a standard compass bearing (0=north, clockwise) — not
+// with azimuth already a standard compass bearing (0=north, clockwise) - not
 // the old "radians, 0=south" API some docs/examples still describe. No
 // conversion needed; empirically verified against the installed package.
 

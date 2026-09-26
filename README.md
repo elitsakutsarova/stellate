@@ -58,7 +58,7 @@ alter table pairs enable row level security;
 Live updates don't come from the table: the server sends a small "pair-changed" message over a Supabase Realtime channel whenever a pair changes, and the app then asks the server for its new status.
 
 3. Copy `.env.example` to `.env` (root folder) and fill in your Supabase project's url + public key
-4. Copy `server/.env.example` to `server/.env` and fill in the same url + the service role key (a different, secret one — don't share this file with anyone)
+4. Copy `server/.env.example` to `server/.env` and fill in the same url + the service role key (a different, secret one - don't share this file with anyone)
 5. Run `npm run server` in one terminal, `npm start` in another
 
-The app finds my computer automatically while developing, no need to type in an IP address. That only works while the phone is on the same wifi though — for it to actually work between two people far apart, the server would need to be hosted somewhere real instead of just running on a laptop.
+The app finds my computer automatically while developing, no need to type in an IP address. That only works while the phone is on the same wifi though - for it to actually work between two people far apart, the server would need to be hosted somewhere real instead of just running on a laptop.

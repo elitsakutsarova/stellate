@@ -76,7 +76,7 @@ export function TogetherGlow({ visible }: { visible: boolean }) {
 }
 
 // One short edge flash in the colour of the sun/moon, the moment it comes on
-// screen — fired by the same change that triggers the viewfinder's haptic.
+// screen - fired by the same change that triggers the viewfinder's haptic.
 export function FoundFlash({ looking }: { looking: Looking }) {
     const opacity = useRef(new Animated.Value(0)).current;
     // keep the last colour, so the flash doesn't change colour while fading out

@@ -10,19 +10,19 @@ import express from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { createClient } from "@supabase/supabase-js";
-import { pairChannel, PAIR_CHANGED_EVENT } from "../src/lib/constants";
+import { CHANNELS, pairChannel, PAIR_CHANGED_EVENT } from "../src/lib/constants";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error(
-        "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY — copy server/.env.example to server/.env and fill them in."
+        "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY - copy server/.env.example to server/.env and fill them in."
     );
 }
 
 // The service role key bypasses Row Level Security entirely. That's safe
-// here specifically because this client only ever runs on the server —
+// here specifically because this client only ever runs on the server -
 // it's never bundled into the app, so nobody outside this process can use
 // it. All the "who's allowed to do what" checks this route file performs
 // take the place of RLS for these operations.
@@ -33,7 +33,7 @@ app.use(cors());
 app.use(express.json());
 
 // A generous baseline for every route, so a single client/script can't
-// hammer the API unbounded — most abuse of any kind gets caught here.
+// hammer the API unbounded - most abuse of any kind gets caught here.
 app.use(
     "/api",
     rateLimit({
@@ -44,7 +44,7 @@ app.use(
     })
 );
 
-// Much stricter on join specifically — this is the endpoint someone would
+// Much stricter on join specifically - this is the endpoint someone would
 // use to brute-force-guess a code. 1.29 billion possible codes only
 // resists guessing if the guess *rate* is also bounded; this caps it at
 // 10/minute per IP, which makes sustained guessing impractical without
@@ -61,14 +61,14 @@ app.get("/", (_req, res) => {
     res.json({ ok: true });
 });
 
-// Unclaimed codes older than this are treated as expired — bounds how
+// Unclaimed codes older than this are treated as expired - bounds how
 // long a code stays guessable if nobody ever joins it, rather than
 // leaving it valid (and brute-forceable) forever.
 const PAIR_EXPIRATION_MS = 24 * 60 * 60 * 1000;
 const isExpired = (createdAt: string) => Date.now() - new Date(createdAt).getTime() > PAIR_EXPIRATION_MS;
 
 const generateCode = () => {
-    // no confusing characters like 0/O or 1/I — matches the app's old client-side generator.
+    // no confusing characters like 0/O or 1/I - matches the app's old client-side generator.
     // randomInt (not Math.random) because the code acts as a secret: Math.random
     // is only meant to *look* random, not to be unpredictable to an attacker.
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -76,7 +76,7 @@ const generateCode = () => {
 };
 
 // Tells both phones "this pair changed, ask the server for the new status".
-// Deliberately carries no data — the app re-fetches through /status, which
+// Deliberately carries no data - the app re-fetches through /status, which
 // does the membership check, so nothing sensitive ever goes over the channel.
 // Best-effort: a failed announcement shouldn't fail the request that caused it.
 const announcePairChanged = async (pairId: string) => {
@@ -128,7 +128,7 @@ const createPair = async (req: express.Request, res: express.Response) => {
         .is("device_b", null)
         .lt("created_at", new Date(Date.now() - PAIR_EXPIRATION_MS).toISOString());
 
-    // A new code can (rarely) match an existing one — the unique constraint
+    // A new code can (rarely) match an existing one - the unique constraint
     // then rejects the insert with Postgres error 23505. Just try a fresh code.
     let data = null;
     let error = null;
@@ -202,11 +202,11 @@ const joinPair = async (req: express.Request, res: express.Response) => {
         return;
     }
 
-    res.status(409).json({ error: "That code is taken — it already connects two other people." });
+    res.status(409).json({ error: "That code is taken - it already connects two other people." });
 };
 
 // Everything the app is allowed to know about its own pair. Never includes
-// the partner's device id — that id works like a password for the routes
+// the partner's device id - that id works like a password for the routes
 // above, so it stays on the server.
 const getStatus = async (req: express.Request, res: express.Response) => {
     const mine = await findMyPair(req.params.id as string, req.body?.deviceId, res);
@@ -218,7 +218,7 @@ const getStatus = async (req: express.Request, res: express.Response) => {
         id: pair.id,
         code: pair.code,
         partnerLeft: !(amIA ? pair.device_b_active : pair.device_a_active),
-        // rough (~10 km) — enough for sky maths, never an exact position
+        // rough (~10 km) - enough for sky maths, never an exact position
         partnerLocation: partnerLat != null && partnerLon != null ? { latitude: partnerLat, longitude: partnerLon } : null,
     });
 };
@@ -281,11 +281,99 @@ const setPresence = async (req: express.Request, res: express.Response) => {
     res.json({ ok: true });
 };
 
+// Expo push tokens look like "ExponentPushToken[...]"
+const isPushToken = (token: unknown) => typeof token === "string" && /^ExponentPushToken\[.+\]$/.test(token);
+
+// A phone's push "address", or null when its "looks up" toggle is off - then
+// there's simply nowhere to send to. Never sent back out (not in /status).
+const setPushTokenRoute = async (req: express.Request, res: express.Response) => {
+    const { deviceId, token } = req.body ?? {};
+    const id = req.params.id as string;
+    if (token !== null && !isPushToken(token)) {
+        res.status(400).json({ error: "token must be an Expo push token or null" });
+        return;
+    }
+    const mine = await findMyPair(id, deviceId, res);
+    if (!mine) return;
+
+    const { error } = await supabase
+        .from("pairs")
+        .update(mine.amIA ? { push_token_a: token } : { push_token_b: token })
+        .eq("id", id);
+    if (error) {
+        res.status(500).json({ error: "Could not save push token" });
+        return;
+    }
+    res.json({ ok: true });
+};
+
+// Sends one push through Expo's push service. If Expo says the token is dead
+// (app uninstalled etc.), forget it so we stop trying.
+const sendPush = async (pairId: string, column: "push_token_a" | "push_token_b", to: string, title: string, body: string) => {
+    try {
+        const response = await fetch("https://exp.host/--/api/v2/push/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ to, title, body, sound: "default", priority: "high", channelId: CHANNELS.lookUp }),
+        });
+        const result = await response.json();
+        if (result?.data?.details?.error === "DeviceNotRegistered") {
+            await supabase.from("pairs").update({ [column]: null }).eq("id", pairId);
+        } else if (result?.data?.status !== "ok") {
+            console.warn("Push not sent:", JSON.stringify(result));
+        }
+    } catch (err) {
+        console.warn("Push not sent:", err);
+    }
+};
+
+// After a push, stay quiet this long before sending that person another -
+// so looking away and back a few times doesn't spam them.
+const LOOK_UP_PAUSE_MS = 30 * 60 * 1000;
+// When each phone last got a "looks up" push. In memory: if the server
+// restarts it's forgotten, which at worst means one extra push.
+const lastLookUpPush = new Map<string, number>();
+
+// "I've been looking at the sun/moon for a few seconds and my special someone
+// isn't in the app" - tell them, if they want to know and it's not too soon.
+const lookingNow = async (req: express.Request, res: express.Response) => {
+    const { deviceId, looking } = req.body ?? {};
+    const id = req.params.id as string;
+    if (looking !== "sun" && looking !== "moon") {
+        res.status(400).json({ error: "looking must be sun or moon" });
+        return;
+    }
+    const mine = await findMyPair(id, deviceId, res);
+    if (!mine) return;
+    const { pair, amIA } = mine;
+
+    const column = amIA ? "push_token_b" : "push_token_a";
+    const theirToken = pair[column];
+    const theirDevice = amIA ? pair.device_b : pair.device_a;
+    const theyStayed = amIA ? pair.device_b_active : pair.device_a_active; // not disconnected
+    if (!theirToken || !theirDevice || !theyStayed) {
+        res.json({ ok: true, sent: false });
+        return;
+    }
+
+    const key = `${pair.id}:${theirDevice}`;
+    if (Date.now() - (lastLookUpPush.get(key) ?? 0) < LOOK_UP_PAUSE_MS) {
+        res.json({ ok: true, sent: false });
+        return;
+    }
+    lastLookUpPush.set(key, Date.now());
+
+    await sendPush(pair.id, column, theirToken, `Your special someone is looking at the ${looking} right now`, "Look up with them?");
+    res.json({ ok: true, sent: true });
+};
+
 app.post("/api/pairs", createPair);
 app.post("/api/pairs/join", joinLimiter, joinPair);
 app.post("/api/pairs/:id/status", getStatus);
 app.post("/api/pairs/:id/presence", setPresence);
 app.post("/api/pairs/:id/location", setLocation);
+app.post("/api/pairs/:id/push-token", setPushTokenRoute);
+app.post("/api/pairs/:id/looking", lookingNow);
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 app.listen(PORT, () => {

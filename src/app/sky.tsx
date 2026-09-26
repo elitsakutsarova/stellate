@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { View, Text, Pressable, Alert, Switch } from "react-native";
+import { View, Text, Pressable, Alert } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,19 +7,21 @@ import * as Clipboard from "expo-clipboard";
 import { Share } from "react-native";
 import * as Linking from "expo-linking";
 import { setLocation, setPresence } from "@/lib/api";
-import { cancelSkyReminders, sendTestReminder } from "@/lib/sky-reminders";
+import { cancelSkyReminders, sendTestReminder } from "@/lib/notifications";
 import { usePairStore } from "@/store/use-pair-store";
 import { useLocation } from "@/hooks/use-location";
 import { useSkyBodies, basisLookingAt } from "@/hooks/use-sky-bodies";
 import { useDeviceOrientation } from "@/hooks/use-device-orientation";
 import { usePairPresence, type Looking } from "@/hooks/use-pair-presence";
 import { useSkyReminders } from "@/hooks/use-sky-reminders";
+import { useNotificationSettings } from "@/hooks/use-notification-settings";
+import { useLookUpAlerts } from "@/hooks/use-look-up-alerts";
 import { SkyViewfinder } from "@/components/sky-viewfinder";
 import { SkyScene } from "@/components/sky-scene";
 import { FoundFlash, TogetherGlow } from "@/components/edge-glow";
-import { SideMenu } from "@/components/side-menu";
+import { MenuHeading, MenuToggle, SideMenu } from "@/components/side-menu";
 
-// Light-on-dark text colours for the drawn night sky — placeholder styling
+// Light-on-dark text colours for the drawn night sky - placeholder styling
 // until there's a real design for this screen.
 const TEXT = {
     main: "#EEF0FF",
@@ -50,11 +52,12 @@ export default function Sky() {
         setLocation(pairId, deviceId, coords).catch(() => {});
     }, [coords, pairId, deviceId]);
 
-    const reminders = useSkyReminders(coords, partnerLeft ? null : pair?.partnerLocation ?? null);
+    const notifications = useNotificationSettings();
+    useSkyReminders(notifications.reminders, coords, partnerLeft ? null : pair?.partnerLocation ?? null);
     const [menuOpen, setMenuOpen] = useState(false);
 
     // Pops up whenever the error actually changes (e.g. first denied, or
-    // switches from "denied" to "go to Settings") — not on every repeated
+    // switches from "denied" to "go to Settings") - not on every repeated
     // foreground re-check that still finds the same denial, since setting
     // state to an identical value doesn't trigger a re-render/effect.
     useEffect(() => {
@@ -82,7 +85,7 @@ export default function Sky() {
         : sensors;
     const nextDebugTarget: Looking = debugTarget === null ? "sun" : debugTarget === "sun" ? "moon" : null;
 
-    // What *I'm* looking at, straight from the viewfinder (no delay) — the
+    // What *I'm* looking at, straight from the viewfinder (no delay) - the
     // other phone's value already arrives settled via presence.
     const [myLooking, setMyLooking] = useState<Looking>(null);
     const handleLookingChange = useCallback((looking: Looking) => {
@@ -90,16 +93,18 @@ export default function Sky() {
         setLooking(looking);
     }, [setLooking]);
 
-    // Both looking at the sky right now — the same body or not (it can be
+    // Both looking at the sky right now - the same body or not (it can be
     // day for one of you and night for the other).
     const together = !partnerLeft && !!myLooking && !!partnerLooking;
+
+    useLookUpAlerts({ enabled: notifications.lookUp, pairId, deviceId, myLooking, partnerOnline });
 
     const handleDisconnect = async () => {
         if (pair && deviceId) {
             try {
                 await setPresence(pair.id, deviceId, false);
             } catch (err: any) {
-                // best-effort — still let them leave locally even if the
+                // best-effort - still let them leave locally even if the
                 // server couldn't be reached to update presence, so a
                 // network hiccup can never trap someone on this screen
                 console.warn("Couldn't update presence on disconnect:", err.message);
@@ -201,32 +206,28 @@ export default function Sky() {
             </View>
 
             <SideMenu open={menuOpen} onOpenChange={setMenuOpen}>
-                <View style={{ gap: 6 }}>
-                    {/* The whole row is the button; the switch only *shows* the
-                        state (no touches of its own), so it can't flip on
-                        and back off while the permission is still being
-                        decided — it only moves once the answer is known. */}
-                    <Pressable
-                        onPress={() => reminders.toggle(!reminders.enabled)}
-                        disabled={!reminders.supported}
-                        style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}
-                    >
-                        <Text style={{ color: TEXT.main, fontSize: 16, flex: 1 }}>Sky reminders</Text>
-                        <View pointerEvents="none">
-                            <Switch value={reminders.enabled} disabled={!reminders.supported} />
-                        </View>
-                    </Pressable>
-                    <Text style={{ color: TEXT.muted, fontSize: 13 }}>
-                        A notification when the sun or moon is up for both of you.
-                    </Text>
-                    {!reminders.supported && (
+                <View style={{ gap: 16 }}>
+                    <MenuHeading>Notifications</MenuHeading>
+                    <MenuToggle
+                        label="When your special someone looks up"
+                        value={notifications.lookUp}
+                        onChange={(on) => notifications.toggle("lookUp", on)}
+                        disabled={!notifications.supported}
+                    />
+                    <MenuToggle
+                        label="When the sun or moon is up for both of you"
+                        value={notifications.reminders}
+                        onChange={(on) => notifications.toggle("reminders", on)}
+                        disabled={!notifications.supported}
+                    />
+                    {!notifications.supported && (
                         <Text style={{ color: TEXT.muted, fontSize: 13 }}>
-                            Not available in Expo Go on Android — needs a development build.
+                            Not available in Expo Go on Android - needs a development build.
                         </Text>
                     )}
                 </View>
 
-                {__DEV__ && reminders.supported && (
+                {__DEV__ && notifications.supported && (
                     <Pressable onPress={sendTestReminder}>
                         <Text style={{ color: TEXT.link }}>Debug: test reminder in 10s</Text>
                     </Pressable>

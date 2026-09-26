@@ -1,14 +1,43 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { Animated, Pressable, StyleSheet, View } from "react-native";
+import { Animated, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
 
 const SLIDE_MS = 250;
 const MENU_WIDTH = 0.8; // fraction of the screen width
-const COLORS = { panel: "#141836", backdrop: "#000000", icon: "#EEF0FF" };
+const COLORS = { panel: "#141836", backdrop: "#000000", icon: "#EEF0FF", text: "#EEF0FF", muted: "#8C93B8" };
 
 // ☰ icon geometry: three 2px lines, GAP apart
 const LINE_W = 22;
 const GAP = 7;
+
+// A section title inside the menu, e.g. "Notifications".
+export function MenuHeading({ children }: { children: ReactNode }) {
+    return <Text style={{ color: COLORS.muted, fontSize: 13, fontWeight: "600", textTransform: "uppercase", letterSpacing: 1 }}>{children}</Text>;
+}
+
+// One on/off row. The whole row is the button; the switch only *shows* the
+// state (no touches of its own), so it can't flip on and back off while
+// something (like a permission popup) is still being decided - it only
+// moves once the answer is known.
+export function MenuToggle({ label, value, onChange, disabled }: {
+    label: string;
+    value: boolean;
+    onChange: (on: boolean) => void;
+    disabled?: boolean;
+}) {
+    return (
+        <Pressable
+            onPress={() => onChange(!value)}
+            disabled={disabled}
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}
+        >
+            <Text style={{ color: COLORS.text, fontSize: 16, flex: 1 }}>{label}</Text>
+            <View pointerEvents="none">
+                <Switch value={value} disabled={disabled} />
+            </View>
+        </Pressable>
+    );
+}
 
 type Props = {
     open: boolean;
@@ -19,7 +48,7 @@ type Props = {
 // A panel that slides in from the left over a dimmed backdrop, plus the ☰
 // button that opens it. The button stays in the top-left corner, above the
 // panel, and turns into an X as the panel comes out (and back as it closes)
-// — both driven by the same `progress`, so they always move in step.
+// - both driven by the same `progress`, so they always move in step.
 // Always rendered (just moved off screen when closed) so it can animate both
 // ways; animations run on the native side.
 export function SideMenu({ open, onOpenChange, children }: Props) {

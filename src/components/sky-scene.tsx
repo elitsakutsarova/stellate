@@ -20,7 +20,7 @@ const CARDINALS = [
     { label: "W", bearing: 270 },
 ];
 
-// Stylised night palette — placeholder until there's a real design.
+// Stylised night palette - placeholder until there's a real design.
 const COLORS = {
     skyTop: "#0A0F2C",
     skyMid: "#1B1F4B",
@@ -34,7 +34,7 @@ const COLORS = {
     star: "#FFFFFF",
 };
 
-// The main colour of each body's glow — also used by the "found it" flash,
+// The main colour of each body's glow - also used by the "found it" flash,
 // so the flash always matches what you're looking at.
 export const BODY_COLORS = { sun: "#FFD27A", moon: "#DDE3FF" } as const;
 
@@ -56,7 +56,7 @@ const GRID_LINES = [
 // night. Placed in the sky sphere (bearing/altitude), not on the screen, so
 // they move correctly as you turn.
 function seededRandom(seed: number) {
-    // mulberry32 — a tiny, well-known pseudo-random generator
+    // mulberry32 - a tiny, well-known pseudo-random generator
     return () => {
         seed = (seed + 0x6d2b79f5) | 0;
         let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
@@ -77,7 +77,7 @@ const STARS = Array.from({ length: 150 }, () => ({
 const FULL_NIGHT_SUN_ALTITUDE = -12;
 
 // Per animation frame, move this fraction of the way towards the latest
-// sensor reading — the same smoothing the sun/moon icon used to have, now for
+// sensor reading - the same smoothing the sun/moon icon used to have, now for
 // the whole sky at once so the body and horizon can never drift apart.
 const SMOOTHING = 0.1;
 
@@ -101,7 +101,7 @@ function useSmoothedBasis(E: Vec3, N: Vec3, U: Vec3) {
                 N: normalize(lerpVec(current.N, t.N, SMOOTHING)),
                 U: normalize(lerpVec(current.U, t.U, SMOOTHING)),
             };
-            // already there (e.g. phone lying still) — skip the re-render
+            // already there (e.g. phone lying still) - skip the re-render
             const moved = distance(next.E, current.E) + distance(next.N, current.N) + distance(next.U, current.U);
             current = next;
             if (moved > 1e-5) setSmooth(next);
@@ -116,12 +116,12 @@ function useSmoothedBasis(E: Vec3, N: Vec3, U: Vec3) {
 // how far below the horizon (in px) the ground takes to go fully dark
 const GROUND_FADE_PX = 320;
 
-// points further than this from where the phone points are behind you —
+// points further than this from where the phone points are behind you -
 // projecting them would flip them onto the screen upside down
 const IN_FRONT_DEG = 80;
 
 // The drawn sky behind everything on the sky screen: background, stars, grid,
-// ground, horizon, compass letters and the sun/moon — all positioned from the same
+// ground, horizon, compass letters and the sun/moon - all positioned from the same
 // E/N/U, so they move together as one space as you turn the phone.
 export function SkyScene({ bodies, declination, ...raw }: Props) {
     const { width, height } = useSafeAreaFrame();
@@ -135,7 +135,7 @@ export function SkyScene({ bodies, declination, ...raw }: Props) {
     const at = (bearing: number, altitude: number) =>
         projectToScreen(E, N, U, declination, bearing, altitude, width, height);
 
-    // Splits a line into the parts in front of you, as SVG point strings —
+    // Splits a line into the parts in front of you, as SVG point strings -
     // points behind you would flip across the screen.
     const visibleSegments = (points: { bearing: number; altitude: number }[]) => {
         const segments: string[][] = [[]];

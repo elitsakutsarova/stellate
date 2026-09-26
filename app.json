@@ -18,7 +18,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.elitsakutsarova.stellate"
+      "package": "com.elitsakutsarova.stellate",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "output": "static",
