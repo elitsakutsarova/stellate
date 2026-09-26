@@ -1,9 +1,7 @@
 import { create } from "zustand";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
-import { PAIR_ID_KEY, PAIR_CODE_KEY } from "@/lib/constants";
-
-const DEVICE_ID_KEY = "stellate_device_id";
+import { DEVICE_ID_KEY, PAIR_ID_KEY, PAIR_CODE_KEY } from "@/lib/constants";
 
 type PairStore = {
     deviceId: string | null;

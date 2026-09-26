@@ -128,12 +128,18 @@ const createPair = async (req: express.Request, res: express.Response) => {
         .is("device_b", null)
         .lt("created_at", new Date(Date.now() - PAIR_EXPIRATION_MS).toISOString());
 
-    const code = generateCode();
-    const { data, error } = await supabase
-        .from("pairs")
-        .insert({ code, device_a: deviceId })
-        .select("id, code")
-        .single();
+    // A new code can (rarely) match an existing one — the unique constraint
+    // then rejects the insert with Postgres error 23505. Just try a fresh code.
+    let data = null;
+    let error = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+        ({ data, error } = await supabase
+            .from("pairs")
+            .insert({ code: generateCode(), device_a: deviceId })
+            .select("id, code")
+            .single());
+        if (error?.code !== "23505") break;
+    }
 
     if (error || !data) {
         res.status(500).json({ error: "Could not create a pair" });

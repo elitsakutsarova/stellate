@@ -111,5 +111,3 @@ export default function Sky() {
         </View>
     );
 }
-// !!! this disconnect button only disconnects device that triggered it from the pair, but the other connected device is still connected - need to find a way to show them sth like "aw man your soulmate disconnected" - maybe also if it was an accident it can have a reconnect code
-// also in table the pair still shows the disconnected device - e.g device_a pressed disconnect => still in Supabase table

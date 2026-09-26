@@ -102,11 +102,14 @@ export function useSkyBodies(coords: { latitude: number; longitude: number } | n
 
     useEffect(() => {
         if (!coords) return;
+        // TypeScript can't tell the check above still holds inside
+        // recompute() (it runs later, on a timer), so give it a plain const
+        const { latitude, longitude } = coords;
 
         function recompute() {
             const now = new Date();
-            const sunPos = SunCalc.getPosition(now, coords.latitude, coords.longitude);
-            const moonPos = SunCalc.getMoonPosition(now, coords.latitude, coords.longitude);
+            const sunPos = SunCalc.getPosition(now, latitude, longitude);
+            const moonPos = SunCalc.getMoonPosition(now, latitude, longitude);
 
             setSun({
                 altitude: sunPos.altitude,

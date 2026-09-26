@@ -96,14 +96,9 @@ export function SkyViewfinder({ active, E, N, U, declination }: Props) {
             pointerEvents="box-none"
             style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}
         >
-            {/* temporary debug readout — remove once this locks on reliably */}
-            <Text style={{ position: "absolute", top: 8, left: 12, color: "#888", fontSize: 12 }}>
-                {active.name} target az {active.bearing.toFixed(0)}° alt {active.altitude.toFixed(0)}°{"\n"}
-                diff {projection?.angleFromCenter.toFixed(0)}° · declination {declination.toFixed(0)}°
-            </Text>
-            {projection && (
+            {projection && !projection.visible && (
                 <Text style={{ position: "absolute", bottom: 40, alignSelf: "center", color: "#888" }}>
-                    Turn your phone to device around
+                    Follow the arrow to find the {active.name}
                 </Text>
             )}
             {projection && !projection.visible && (
