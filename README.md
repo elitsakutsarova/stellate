@@ -1,56 +1,65 @@
-# Welcome to your Expo app 👋
+# Stellate
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+App where two people pair up with a 6 character code and can see exactly where the sun/moon actually is in the sky right now, wherever they are, so they can feel a sort of connection.
 
-## Get started
+## How it works
 
-1. Install dependencies
+- One person creates a connection and gets a code
+- They share the code, the other person joins with it
+- Both land on the sky screen, which uses location + the phone's sensors to find the sun (or moon if it's night) and shows where to point your phone to see it
+- You can see if your partner has the app open, and disconnect/reconnect anytime with the same code
 
-   ```bash
-   npm install
-   ```
+## What I used
 
-2. Start the app
+- Expo / React Native for the app
+- Supabase for the database, and to keep things live between the two people (so you see when your partner connects/disconnects)
+- A small Express server for the more sensitive stuff (creating a pair, joining, updating presence) instead of doing it straight from the phone
+- zustand for the bit of state shared between the two screens (device id, current pair)
+- suncalc to calculate where the sun/moon actually is
+- expo-location + expo-sensors for gps and compass/accelerometer stuff, to know where the phone is pointing
 
-   ```bash
-   npx expo start
-   ```
+## Project folders
 
-In the output, you'll find options to open the app in a
+- src/app - the two screens
+- src/components - the sky viewfinder (the icon + arrow that track the sun/moon)
+- src/hooks - one file per feature (location, phone orientation, sun/moon position, pair info)
+- src/store - the shared pair/device state
+- src/lib - supabase client + calls to my own backend
+- server - the backend
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Why there's a backend
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+Supabase's key in the app is public on purpose, so the real security has to come from rules on the database side. That worked for most things, but there were a couple things those rules couldn't really do (like stopping someone from listing every single pair code, or rate limiting/code expiring). So I made a small backend that holds the actual secret key and does those checks in normal code instead.
 
-## Get a fresh project
+## Setup
 
-When you're ready, run:
+1. `npm install`
+2. Make a Supabase project, run this in its SQL editor:
 
-```bash
-npm run reset-project
+```sql
+create table pairs (
+  id uuid primary key default gen_random_uuid(),
+  code text not null unique,
+  device_a uuid,
+  device_b uuid,
+  push_token_a text,
+  push_token_b text,
+  created_at timestamptz not null default now(),
+  device_a_active boolean not null default true,
+  device_b_active boolean not null default true
+);
+
+alter table pairs enable row level security;
+
+create policy "anyone can read pairs"
+  on pairs for select
+  using (true);
+
+alter publication supabase_realtime add table pairs;
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+3. Copy `.env.example` to `.env` (root folder) and fill in your Supabase project's url + public key
+4. Copy `server/.env.example` to `server/.env` and fill in the same url + the service role key (a different, secret one — don't share this file with anyone)
+5. Run `npm run server` in one terminal, `npm start` in another
 
-### Other setup steps
-
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+The app finds my computer automatically while developing, no need to type in an IP address. That only works while the phone is on the same wifi though — for it to actually work between two people far apart, the server would need to be hosted somewhere real instead of just running on a laptop.

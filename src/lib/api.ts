@@ -1,4 +1,15 @@
-const API_URL = process.env.EXPO_PUBLIC_API_URL as string;
+import Constants from "expo-constants";
+
+// In development, the phone already knows your laptop's LAN IP — it's how
+// it found the Metro bundler in the first place (Constants.expoConfig.hostUri
+// looks like "192.168.1.5:8081"). Reusing that IP (with the server's own
+// port swapped in) means EXPO_PUBLIC_API_URL never has to be hand-updated
+// every time you switch networks — it's only a fallback for a real build,
+// where there's no Metro dev server to read this from and it needs a real
+// deployed URL from .env instead.
+const SERVER_PORT = 3000;
+const devHost = Constants.expoConfig?.hostUri?.split(":")[0];
+const API_URL = __DEV__ && devHost ? `http://${devHost}:${SERVER_PORT}` : (process.env.EXPO_PUBLIC_API_URL as string);
 
 type PairResponse = { id: string; code: string };
 
