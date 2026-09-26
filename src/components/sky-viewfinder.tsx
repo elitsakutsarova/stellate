@@ -2,14 +2,18 @@ import { useEffect, useRef } from "react";
 import { View, Text } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
-import { projectToScreen } from "@/hooks/use-sky-bodies";
+import { projectToScreen, type SkyBody } from "@/hooks/use-sky-bodies";
 import type { Vec3 } from "@/hooks/use-device-orientation";
 import type { Looking } from "@/hooks/use-pair-presence";
 
-type ActiveBody = { name: "sun" | "moon"; altitude: number; bearing: number; visible: boolean };
+// How far in from each screen edge the body's centre must be before it counts
+// as "looking" (fraction of width/height) — so the tap, flash and together
+// moment wait until it's properly in view, not when a sliver shows at the edge.
+const LOOK_MARGIN = 0.2;
 
 type Props = {
-    active: ActiveBody | null;
+    bodies: SkyBody[];       // both: you can look at either one
+    active: SkyBody | null;  // the one the arrow guides you to
     E: Vec3;
     N: Vec3;
     U: Vec3;
@@ -18,20 +22,29 @@ type Props = {
 };
 
 // Guidance on top of the drawn sky (SkyScene draws the sun/moon itself): an
-// arrow at the screen edge pointing to the sun/moon while it's off screen,
-// smoothed every frame, and a haptic tap the moment it comes on screen.
+// arrow at the screen edge pointing to the main body while you're looking at
+// nothing, smoothed every frame, and a haptic tap the moment the sun or moon
+// (glow or below-horizon ring) comes on screen.
 // Self-contained — sky.tsx
 // only needs to know where the target is (active) and which way the
 // device is pointing (E/N/U/declination), not how any of this works.
-export function SkyViewfinder({ active, E, N, U, declination, onLookingChange }: Props) {
+export function SkyViewfinder({ bodies, active, E, N, U, declination, onLookingChange }: Props) {
     const { width, height } = useSafeAreaFrame();
     const insets = useSafeAreaInsets();
     const projection = active
         ? projectToScreen(E, N, U, declination, active.bearing, active.altitude, width, height)
         : null;
 
-    // what's on screen right now — "sun", "moon", or null if nothing is
-    const lookingAt: Looking = active && projection?.visible ? active.name : null;
+    // what's on screen right now — "sun", "moon", or null if nothing is. If
+    // both are (e.g. a daytime moon near the sun), the one nearer the centre.
+    const onScreen = bodies
+        .map((body) => ({ name: body.name, p: projectToScreen(E, N, U, declination, body.bearing, body.altitude, width, height) }))
+        .filter(({ p }) =>
+            p.visible &&
+            p.x > width * LOOK_MARGIN && p.x < width * (1 - LOOK_MARGIN) &&
+            p.y > height * LOOK_MARGIN && p.y < height * (1 - LOOK_MARGIN))
+        .sort((a, b) => a.p.angleFromCenter - b.p.angleFromCenter);
+    const lookingAt: Looking = onScreen[0]?.name ?? null;
     const arrowRef = useRef<View | null>(null);
     // Kept in sync every render (not via an effect) so the animation loop
     // below can always read the latest projection without needing to
@@ -77,7 +90,7 @@ export function SkyViewfinder({ active, E, N, U, declination, onLookingChange }:
         onLookingChange(lookingAt);
     }, [lookingAt, onLookingChange]);
 
-    if (!active || !projection || projection.visible) return null;
+    if (!active || !projection || lookingAt) return null;
 
     return (
         // Spans the full screen explicitly — a parent using alignItems:

@@ -4,6 +4,8 @@ import type { Vec3 } from "./use-device-orientation";
 
 const SunCalc = require("suncalc");
 type Body = { altitude: number; bearing: number; visible: boolean };
+// visible here = above the horizon
+export type SkyBody = Body & { name: "sun" | "moon" };
 
 // Degrees of sky the screen shows from top to bottom (roughly a phone camera
 // in portrait) — tune this to taste. Left/right follows from the screen's
@@ -201,14 +203,21 @@ export function useSkyBodies(coords: { latitude: number; longitude: number } | n
         return () => clearInterval(interval);
     }, [coords]);
 
-    // Prefer the sun when it's up; fall back to the moon; if neither is up,
-    // show whichever is closer to the horizon (about to rise).
+    const sunBody: SkyBody | null = sun && { name: "sun", ...sun };
+    const moonBody: SkyBody | null = moon && { name: "moon", ...moon };
+    // Both are always somewhere in the sky sphere (above or below the
+    // horizon), and you can look at either one.
+    const bodies = [sunBody, moonBody].filter((b): b is SkyBody => b !== null);
+
+    // The "main" one the arrow guides you to: prefer the sun when it's up;
+    // fall back to the moon; if neither is up, whichever is closer to the
+    // horizon (about to rise).
     const active =
-        sun?.visible ? { name: "sun" as const, ...sun } :
-            moon?.visible ? { name: "moon" as const, ...moon } :
-                sun && moon
-                    ? (sun.altitude > moon.altitude ? { name: "sun" as const, ...sun } : { name: "moon" as const, ...moon })
+        sunBody?.visible ? sunBody :
+            moonBody?.visible ? moonBody :
+                sunBody && moonBody
+                    ? (sunBody.altitude > moonBody.altitude ? sunBody : moonBody)
                     : null;
 
-    return { sun, moon, active };
+    return { bodies, active };
 }

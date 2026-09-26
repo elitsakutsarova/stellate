@@ -6,7 +6,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
 import { Share } from "react-native";
 import * as Linking from "expo-linking";
-import * as Haptics from "expo-haptics";
 import { setPresence } from "@/lib/api";
 import { usePairStore } from "@/store/use-pair-store";
 import { useLocation } from "@/hooks/use-location";
@@ -15,7 +14,7 @@ import { useDeviceOrientation } from "@/hooks/use-device-orientation";
 import { usePairPresence, type Looking } from "@/hooks/use-pair-presence";
 import { SkyViewfinder } from "@/components/sky-viewfinder";
 import { SkyScene } from "@/components/sky-scene";
-import { TogetherGlow } from "@/components/together-glow";
+import { FoundFlash, TogetherGlow } from "@/components/edge-glow";
 
 // Light-on-dark text colours for the drawn night sky — placeholder styling
 // until there's a real design for this screen.
@@ -54,17 +53,20 @@ export default function Sky() {
         ]);
     }, [locationError, canAskAgain, retry]);
 
-    const { active } = useSkyBodies(coords);
+    const { bodies, active } = useSkyBodies(coords);
     const sensors = useDeviceOrientation(!!coords);
     const { declination } = sensors;
 
     // Development only: pretend the phone is aimed straight at the sun/moon,
     // for testing on devices with poor sensors. __DEV__ is false in a real
     // build, so neither the button nor this override can exist there.
-    const [debugLook, setDebugLook] = useState(false);
-    const { E, N, U } = __DEV__ && debugLook && active
-        ? basisLookingAt(active.bearing, active.altitude, declination)
+    // Tapping cycles: sensors -> look at sun -> look at moon -> sensors.
+    const [debugTarget, setDebugTarget] = useState<Looking>(null);
+    const debugBody = __DEV__ ? bodies.find((b) => b.name === debugTarget) : undefined;
+    const { E, N, U } = debugBody
+        ? basisLookingAt(debugBody.bearing, debugBody.altitude, declination)
         : sensors;
+    const nextDebugTarget: Looking = debugTarget === null ? "sun" : debugTarget === "sun" ? "moon" : null;
 
     // What *I'm* looking at, straight from the viewfinder (no delay) — the
     // other phone's value already arrives settled via presence.
@@ -77,11 +79,6 @@ export default function Sky() {
     // Both looking at the sky right now — the same body or not (it can be
     // day for one of you and night for the other).
     const together = !partnerLeft && !!myLooking && !!partnerLooking;
-
-    // one gentle "success" buzz as the moment starts
-    useEffect(() => {
-        if (together) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }, [together]);
 
     const handleDisconnect = async () => {
         if (pair && deviceId) {
@@ -113,17 +110,18 @@ export default function Sky() {
             <Stack.Screen options={{ headerShown: false }} />
             <StatusBar style="light" />
 
-            <SkyScene active={active} E={E} N={N} U={U} declination={declination} />
-            <SkyViewfinder active={active} E={E} N={N} U={U} declination={declination} onLookingChange={handleLookingChange} />
+            <SkyScene bodies={bodies} E={E} N={N} U={U} declination={declination} />
+            <SkyViewfinder bodies={bodies} active={active} E={E} N={N} U={U} declination={declination} onLookingChange={handleLookingChange} />
+            <FoundFlash looking={myLooking} />
             <TogetherGlow visible={together} />
 
-            {__DEV__ && active && (
+            {__DEV__ && bodies.length > 0 && (
                 <Pressable
-                    onPress={() => setDebugLook((on) => !on)}
+                    onPress={() => setDebugTarget(nextDebugTarget)}
                     style={{ position: "absolute", top: insets.top + 48, right: 12, zIndex: 2, padding: 8, borderRadius: 8, backgroundColor: "#FFFFFF22" }}
                 >
                     <Text style={{ fontSize: 12, color: TEXT.main }}>
-                        {debugLook ? "Debug: sensors" : `Debug: look at ${active.name}`}
+                        {nextDebugTarget ? `Debug: look at ${nextDebugTarget}` : "Debug: sensors"}
                     </Text>
                 </Pressable>
             )}
@@ -150,11 +148,11 @@ export default function Sky() {
                 {together && (
                     <View style={{ alignItems: "center", gap: 4 }}>
                         <Text style={{ color: TEXT.together, fontSize: 20, fontWeight: "600" }}>You are now connected</Text>
-                        {/* <Text style={{ color: TEXT.muted, textAlign: "center" }}>
+                        <Text style={{ color: TEXT.muted, textAlign: "center" }}>
                             {myLooking === partnerLooking
                                 ? `You're both looking at the ${myLooking}`
                                 : `You: the ${myLooking} · Your special someone: the ${partnerLooking}`}
-                        </Text> */}
+                        </Text>
                     </View>
                 )}
                 {!partnerLeft && !together && (
