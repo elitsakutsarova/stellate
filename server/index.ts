@@ -1,4 +1,5 @@
 import path from "node:path";
+import { randomInt } from "node:crypto";
 import dotenv from "dotenv";
 
 // resolve relative to this file, not the current working directory, so
@@ -9,6 +10,7 @@ import express from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { createClient } from "@supabase/supabase-js";
+import { pairChannel, PAIR_CHANGED_EVENT } from "../src/lib/constants";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -66,9 +68,47 @@ const PAIR_EXPIRATION_MS = 24 * 60 * 60 * 1000;
 const isExpired = (createdAt: string) => Date.now() - new Date(createdAt).getTime() > PAIR_EXPIRATION_MS;
 
 const generateCode = () => {
-    // no confusing characters like 0/O or 1/I — matches the app's old client-side generator
+    // no confusing characters like 0/O or 1/I — matches the app's old client-side generator.
+    // randomInt (not Math.random) because the code acts as a secret: Math.random
+    // is only meant to *look* random, not to be unpredictable to an attacker.
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+    return Array.from({ length: 6 }, () => chars[randomInt(chars.length)]).join("");
+};
+
+// Tells both phones "this pair changed, ask the server for the new status".
+// Deliberately carries no data — the app re-fetches through /status, which
+// does the membership check, so nothing sensitive ever goes over the channel.
+// Best-effort: a failed announcement shouldn't fail the request that caused it.
+const announcePairChanged = async (pairId: string) => {
+    const channel = supabase.channel(pairChannel(pairId));
+    try {
+        const result = await channel.httpSend(PAIR_CHANGED_EVENT, {});
+        if (!result.success) console.warn("Couldn't announce pair change:", result.error);
+    } catch (err) {
+        console.warn("Couldn't announce pair change:", err);
+    } finally {
+        await supabase.removeChannel(channel);
+    }
+};
+
+// Loads a pair and checks the caller is one of its two devices. Sends the
+// 404/403 response itself and returns null, so each route just does
+// `if (!pair) return;`.
+const findMyPair = async (id: string, deviceId: unknown, res: express.Response) => {
+    if (typeof deviceId !== "string" || !deviceId) {
+        res.status(400).json({ error: "deviceId is required" });
+        return null;
+    }
+    const { data: pair } = await supabase.from("pairs").select("*").eq("id", id).single();
+    if (!pair) {
+        res.status(404).json({ error: "Pair not found" });
+        return null;
+    }
+    if (pair.device_a !== deviceId && pair.device_b !== deviceId) {
+        res.status(403).json({ error: "That's not your pair" });
+        return null;
+    }
+    return { pair, amIA: pair.device_a === deviceId };
 };
 
 const createPair = async (req: express.Request, res: express.Response) => {
@@ -128,6 +168,7 @@ const joinPair = async (req: express.Request, res: express.Response) => {
             .from("pairs")
             .update(amIA ? { device_a_active: true } : { device_b_active: true })
             .eq("id", existing.id);
+        await announcePairChanged(existing.id);
         res.json({ id: existing.id, code: existing.code });
         return;
     }
@@ -150,6 +191,7 @@ const joinPair = async (req: express.Request, res: express.Response) => {
             res.status(409).json({ error: "Someone may have just joined that code." });
             return;
         }
+        await announcePairChanged(data.id);
         res.json({ id: data.id, code: data.code });
         return;
     }
@@ -157,35 +199,43 @@ const joinPair = async (req: express.Request, res: express.Response) => {
     res.status(409).json({ error: "That code is taken — it already connects two other people." });
 };
 
+// Everything the app is allowed to know about its own pair. Never includes
+// the partner's device id — that id works like a password for the routes
+// above, so it stays on the server.
+const getStatus = async (req: express.Request, res: express.Response) => {
+    const mine = await findMyPair(req.params.id as string, req.body?.deviceId, res);
+    if (!mine) return;
+    const { pair, amIA } = mine;
+    res.json({
+        id: pair.id,
+        code: pair.code,
+        partnerLeft: !(amIA ? pair.device_b_active : pair.device_a_active),
+    });
+};
+
 const setPresence = async (req: express.Request, res: express.Response) => {
     const { deviceId, active } = req.body ?? {};
-    const { id } = req.params;
-    if (!deviceId || typeof active !== "boolean") {
-        res.status(400).json({ error: "deviceId and active are required" });
+    const id = req.params.id as string;
+    if (typeof active !== "boolean") {
+        res.status(400).json({ error: "active is required" });
         return;
     }
 
-    const { data: pair } = await supabase.from("pairs").select("device_a, device_b").eq("id", id).single();
-    if (!pair) {
-        res.status(404).json({ error: "Pair not found" });
-        return;
-    }
-    if (pair.device_a !== deviceId && pair.device_b !== deviceId) {
-        res.status(403).json({ error: "That's not your pair" });
-        return;
-    }
+    const mine = await findMyPair(id, deviceId, res);
+    if (!mine) return;
 
-    const amIA = pair.device_a === deviceId;
     await supabase
         .from("pairs")
-        .update(amIA ? { device_a_active: active } : { device_b_active: active })
+        .update(mine.amIA ? { device_a_active: active } : { device_b_active: active })
         .eq("id", id);
+    await announcePairChanged(id);
 
     res.json({ ok: true });
 };
 
 app.post("/api/pairs", createPair);
 app.post("/api/pairs/join", joinLimiter, joinPair);
+app.post("/api/pairs/:id/status", getStatus);
 app.post("/api/pairs/:id/presence", setPresence);
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;

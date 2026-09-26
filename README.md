@@ -27,10 +27,6 @@ App where two people pair up with a 6 character code and can see exactly where t
 - src/lib - supabase client + calls to my own backend
 - server - the backend
 
-## Why there's a backend
-
-Supabase's key in the app is public on purpose, so the real security has to come from rules on the database side. That worked for most things, but there were a couple things those rules couldn't really do (like stopping someone from listing every single pair code, or rate limiting/code expiring). So I made a small backend that holds the actual secret key and does those checks in normal code instead.
-
 ## Setup
 
 1. `npm install`
@@ -49,14 +45,12 @@ create table pairs (
   device_b_active boolean not null default true
 );
 
+-- RLS on with no policies at all = the public key in the app can't read or
+-- write this table. Only the server (secret service role key) can.
 alter table pairs enable row level security;
-
-create policy "anyone can read pairs"
-  on pairs for select
-  using (true);
-
-alter publication supabase_realtime add table pairs;
 ```
+
+Live updates don't come from the table: the server sends a small "pair-changed" message over a Supabase Realtime channel whenever a pair changes, and the app then asks the server for its new status.
 
 3. Copy `.env.example` to `.env` (root folder) and fill in your Supabase project's url + public key
 4. Copy `server/.env.example` to `server/.env` and fill in the same url + the service role key (a different, secret one — don't share this file with anyone)
