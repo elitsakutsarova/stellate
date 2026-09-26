@@ -45,6 +45,11 @@ create table pairs (
   device_b_active boolean not null default true
 );
 
+-- rough locations (~10 km), for "moon is up for both of you" reminders
+alter table pairs
+  add column lat_a double precision, add column lon_a double precision,
+  add column lat_b double precision, add column lon_b double precision;
+
 -- RLS on with no policies at all = the public key in the app can't read or
 -- write this table. Only the server (secret service role key) can.
 alter table pairs enable row level security;

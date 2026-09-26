@@ -1,6 +1,7 @@
 export const DEVICE_ID_KEY = "stellate_device_id";
 export const PAIR_ID_KEY = "stellate_pair_id";
 export const PAIR_CODE_KEY = "stellate_pair_code";
+export const NOTIFICATIONS_KEY = "stellate_notifications";
 
 // Realtime channel for one pair — shared by the app (listens) and the server
 // (announces changes), so the two can never disagree on the name.

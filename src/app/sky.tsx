@@ -1,20 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
-import { View, Text, Pressable, Alert } from "react-native";
+import { View, Text, Pressable, Alert, Switch } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
 import { Share } from "react-native";
 import * as Linking from "expo-linking";
-import { setPresence } from "@/lib/api";
+import { setLocation, setPresence } from "@/lib/api";
+import { cancelSkyReminders, sendTestReminder } from "@/lib/sky-reminders";
 import { usePairStore } from "@/store/use-pair-store";
 import { useLocation } from "@/hooks/use-location";
 import { useSkyBodies, basisLookingAt } from "@/hooks/use-sky-bodies";
 import { useDeviceOrientation } from "@/hooks/use-device-orientation";
 import { usePairPresence, type Looking } from "@/hooks/use-pair-presence";
+import { useSkyReminders } from "@/hooks/use-sky-reminders";
 import { SkyViewfinder } from "@/components/sky-viewfinder";
 import { SkyScene } from "@/components/sky-scene";
 import { FoundFlash, TogetherGlow } from "@/components/edge-glow";
+import { MenuButton, SideMenu } from "@/components/side-menu";
 
 // Light-on-dark text colours for the drawn night sky — placeholder styling
 // until there's a real design for this screen.
@@ -38,6 +41,17 @@ export default function Sky() {
     const { pair, partnerOnline, partnerLooking, partnerLeft, offline, setLooking } = usePairPresence(isHydrated, deviceId, pairId);
 
     const { coords, error: locationError, canAskAgain, retry } = useLocation();
+
+    // Share a rough location (the server rounds it to ~10 km) so the other
+    // phone can plan "moon is up for both of you" reminders. Best-effort: if
+    // it fails, reminders just wait until the next time.
+    useEffect(() => {
+        if (!coords || !pairId || !deviceId) return;
+        setLocation(pairId, deviceId, coords).catch(() => {});
+    }, [coords, pairId, deviceId]);
+
+    const reminders = useSkyReminders(coords, partnerLeft ? null : pair?.partnerLocation ?? null);
+    const [menuOpen, setMenuOpen] = useState(false);
 
     // Pops up whenever the error actually changes (e.g. first denied, or
     // switches from "denied" to "go to Settings") — not on every repeated
@@ -91,6 +105,7 @@ export default function Sky() {
                 console.warn("Couldn't update presence on disconnect:", err.message);
             }
         }
+        await cancelSkyReminders(); // no reminders about someone you've left
         await clearPair();
         router.replace("/");
     };
@@ -113,6 +128,7 @@ export default function Sky() {
             <SkyScene bodies={bodies} E={E} N={N} U={U} declination={declination} />
             <SkyViewfinder bodies={bodies} active={active} E={E} N={N} U={U} declination={declination} onLookingChange={handleLookingChange} />
             <FoundFlash looking={myLooking} />
+            <MenuButton onPress={() => setMenuOpen(true)} />
             <TogetherGlow visible={together} />
 
             {__DEV__ && bodies.length > 0 && (
@@ -184,6 +200,34 @@ export default function Sky() {
                     <Text style={{ color: TEXT.danger }}>Disconnect</Text>
                 </Pressable>
             </View>
+
+            <SideMenu open={menuOpen} onClose={() => setMenuOpen(false)}>
+                <View style={{ gap: 6 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                        <Text style={{ color: TEXT.main, fontSize: 16, flex: 1 }}>Moon reminders</Text>
+                        <Switch value={reminders.enabled} onValueChange={reminders.toggle} disabled={!reminders.supported} />
+                    </View>
+                    <Text style={{ color: TEXT.muted, fontSize: 13 }}>
+                        A notification when the moon is up for both of you.
+                    </Text>
+                    {!reminders.supported && (
+                        <Text style={{ color: TEXT.muted, fontSize: 13 }}>
+                            Not available in Expo Go on Android — needs a development build.
+                        </Text>
+                    )}
+                    {reminders.blocked && (
+                        <Text style={{ color: TEXT.muted, fontSize: 13 }}>
+                            Notifications are off for Stellate in your phone's Settings.
+                        </Text>
+                    )}
+                </View>
+
+                {__DEV__ && reminders.supported && (
+                    <Pressable onPress={sendTestReminder}>
+                        <Text style={{ color: TEXT.link }}>Debug: test reminder in 10s</Text>
+                    </Pressable>
+                )}
+            </SideMenu>
         </View>
     );
 }

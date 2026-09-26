@@ -212,11 +212,53 @@ const getStatus = async (req: express.Request, res: express.Response) => {
     const mine = await findMyPair(req.params.id as string, req.body?.deviceId, res);
     if (!mine) return;
     const { pair, amIA } = mine;
+    const partnerLat = amIA ? pair.lat_b : pair.lat_a;
+    const partnerLon = amIA ? pair.lon_b : pair.lon_a;
     res.json({
         id: pair.id,
         code: pair.code,
         partnerLeft: !(amIA ? pair.device_b_active : pair.device_a_active),
+        // rough (~10 km) — enough for sky maths, never an exact position
+        partnerLocation: partnerLat != null && partnerLon != null ? { latitude: partnerLat, longitude: partnerLon } : null,
     });
+};
+
+// ~10 km precision: plenty to know when the moon is up somewhere, useless
+// for finding someone's home. Rounded here, on the server, so a precise
+// location is never stored even if an app sends one.
+const roughly = (degrees: number) => Math.round(degrees * 10) / 10;
+
+const setLocation = async (req: express.Request, res: express.Response) => {
+    const { deviceId, latitude, longitude } = req.body ?? {};
+    const id = req.params.id as string;
+    if (
+        typeof latitude !== "number" || typeof longitude !== "number" ||
+        Math.abs(latitude) > 90 || Math.abs(longitude) > 180
+    ) {
+        res.status(400).json({ error: "latitude and longitude are required" });
+        return;
+    }
+
+    const mine = await findMyPair(id, deviceId, res);
+    if (!mine) return;
+    const { pair, amIA } = mine;
+
+    const lat = roughly(latitude);
+    const lon = roughly(longitude);
+    // only write + tell the other phone when it actually changed (e.g. travelling)
+    if ((amIA ? pair.lat_a : pair.lat_b) !== lat || (amIA ? pair.lon_a : pair.lon_b) !== lon) {
+        const { error } = await supabase
+            .from("pairs")
+            .update(amIA ? { lat_a: lat, lon_a: lon } : { lat_b: lat, lon_b: lon })
+            .eq("id", id);
+        if (error) {
+            res.status(500).json({ error: "Could not save location" });
+            return;
+        }
+        await announcePairChanged(id);
+    }
+
+    res.json({ ok: true });
 };
 
 const setPresence = async (req: express.Request, res: express.Response) => {
@@ -243,6 +285,7 @@ app.post("/api/pairs", createPair);
 app.post("/api/pairs/join", joinLimiter, joinPair);
 app.post("/api/pairs/:id/status", getStatus);
 app.post("/api/pairs/:id/presence", setPresence);
+app.post("/api/pairs/:id/location", setLocation);
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 app.listen(PORT, () => {

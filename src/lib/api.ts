@@ -57,10 +57,14 @@ export const createPair = (deviceId: string) => request<PairResponse>("/api/pair
 export const joinPair = (code: string, deviceId: string) =>
     request<PairResponse>("/api/pairs/join", { code, deviceId });
 
-export type PairStatus = { id: string; code: string; partnerLeft: boolean };
+export type Coords = { latitude: number; longitude: number };
+export type PairStatus = { id: string; code: string; partnerLeft: boolean; partnerLocation: Coords | null };
 
 export const getPairStatus = (pairId: string, deviceId: string) =>
     request<PairStatus>(`/api/pairs/${pairId}/status`, { deviceId });
 
-export const setPresence =(pairId: string, deviceId: string, active: boolean) =>
+export const setLocation = (pairId: string, deviceId: string, coords: Coords) =>
+    request<{ ok: true }>(`/api/pairs/${pairId}/location`, { deviceId, ...coords });
+
+export const setPresence = (pairId: string, deviceId: string, active: boolean) =>
     request<{ ok: true }>(`/api/pairs/${pairId}/presence`, { deviceId, active });
