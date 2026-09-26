@@ -17,7 +17,7 @@ import { useSkyReminders } from "@/hooks/use-sky-reminders";
 import { SkyViewfinder } from "@/components/sky-viewfinder";
 import { SkyScene } from "@/components/sky-scene";
 import { FoundFlash, TogetherGlow } from "@/components/edge-glow";
-import { MenuButton, SideMenu } from "@/components/side-menu";
+import { SideMenu } from "@/components/side-menu";
 
 // Light-on-dark text colours for the drawn night sky — placeholder styling
 // until there's a real design for this screen.
@@ -128,7 +128,6 @@ export default function Sky() {
             <SkyScene bodies={bodies} E={E} N={N} U={U} declination={declination} />
             <SkyViewfinder bodies={bodies} active={active} E={E} N={N} U={U} declination={declination} onLookingChange={handleLookingChange} />
             <FoundFlash looking={myLooking} />
-            <MenuButton onPress={() => setMenuOpen(true)} />
             <TogetherGlow visible={together} />
 
             {__DEV__ && bodies.length > 0 && (
@@ -201,23 +200,28 @@ export default function Sky() {
                 </Pressable>
             </View>
 
-            <SideMenu open={menuOpen} onClose={() => setMenuOpen(false)}>
+            <SideMenu open={menuOpen} onOpenChange={setMenuOpen}>
                 <View style={{ gap: 6 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                        <Text style={{ color: TEXT.main, fontSize: 16, flex: 1 }}>Moon reminders</Text>
-                        <Switch value={reminders.enabled} onValueChange={reminders.toggle} disabled={!reminders.supported} />
-                    </View>
+                    {/* The whole row is the button; the switch only *shows* the
+                        state (no touches of its own), so it can't flip on
+                        and back off while the permission is still being
+                        decided — it only moves once the answer is known. */}
+                    <Pressable
+                        onPress={() => reminders.toggle(!reminders.enabled)}
+                        disabled={!reminders.supported}
+                        style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}
+                    >
+                        <Text style={{ color: TEXT.main, fontSize: 16, flex: 1 }}>Sky reminders</Text>
+                        <View pointerEvents="none">
+                            <Switch value={reminders.enabled} disabled={!reminders.supported} />
+                        </View>
+                    </Pressable>
                     <Text style={{ color: TEXT.muted, fontSize: 13 }}>
-                        A notification when the moon is up for both of you.
+                        A notification when the sun or moon is up for both of you.
                     </Text>
                     {!reminders.supported && (
                         <Text style={{ color: TEXT.muted, fontSize: 13 }}>
                             Not available in Expo Go on Android — needs a development build.
-                        </Text>
-                    )}
-                    {reminders.blocked && (
-                        <Text style={{ color: TEXT.muted, fontSize: 13 }}>
-                            Notifications are off for Stellate in your phone's Settings.
                         </Text>
                     )}
                 </View>

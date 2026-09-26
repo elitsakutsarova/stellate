@@ -11,6 +11,10 @@ import type { Looking } from "@/hooks/use-pair-presence";
 // moment wait until it's properly in view, not when a sliver shows at the edge.
 const LOOK_MARGIN = 0.2;
 
+// The arrow only helps when you can't see anything: it stays hidden while any
+// part of the sun/moon's glow is still on screen, even right at an edge.
+const GLOW_VISIBLE_PX = 24;
+
 type Props = {
     bodies: SkyBody[];       // both: you can look at either one
     active: SkyBody | null;  // the one the arrow guides you to
@@ -37,8 +41,15 @@ export function SkyViewfinder({ bodies, active, E, N, U, declination, onLookingC
 
     // what's on screen right now — "sun", "moon", or null if nothing is. If
     // both are (e.g. a daytime moon near the sun), the one nearer the centre.
-    const onScreen = bodies
-        .map((body) => ({ name: body.name, p: projectToScreen(E, N, U, declination, body.bearing, body.altitude, width, height) }))
+    const placed = bodies.map((body) => ({
+        name: body.name,
+        p: projectToScreen(E, N, U, declination, body.bearing, body.altitude, width, height),
+    }));
+    const anythingInView = placed.some(({ p }) =>
+        p.angleFromCenter < 90 &&
+        p.x > -GLOW_VISIBLE_PX && p.x < width + GLOW_VISIBLE_PX &&
+        p.y > -GLOW_VISIBLE_PX && p.y < height + GLOW_VISIBLE_PX);
+    const onScreen = placed
         .filter(({ p }) =>
             p.visible &&
             p.x > width * LOOK_MARGIN && p.x < width * (1 - LOOK_MARGIN) &&
@@ -90,7 +101,7 @@ export function SkyViewfinder({ bodies, active, E, N, U, declination, onLookingC
         onLookingChange(lookingAt);
     }, [lookingAt, onLookingChange]);
 
-    if (!active || !projection || lookingAt) return null;
+    if (!active || !projection || anythingInView) return null;
 
     return (
         // Spans the full screen explicitly — a parent using alignItems:
