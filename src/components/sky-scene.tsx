@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { StyleSheet } from "react-native";
 import { useSafeAreaFrame } from "react-native-safe-area-context";
-import Svg, { Circle, Defs, Line, LinearGradient, Polygon, Polyline, RadialGradient, Rect, Stop, Text } from "react-native-svg";
-import { groundPolygon, projectToScreen, type SkyBody } from "@/hooks/use-sky-bodies";
+import Svg, { Circle, Defs, G, Line, LinearGradient, Path, Polygon, RadialGradient, Rect, Stop, Text } from "react-native-svg";
+import { groundPolygon, projectToScreen, towardsSun, type MoonPhase, type SkyBody } from "@/hooks/use-sky-bodies";
 import { lerpVec, normalize, type Vec3 } from "@/hooks/use-device-orientation";
 import { skyColors } from "@/lib/sky-colors";
+import { FRAME } from "@/lib/theme";
+import { Clouds, IN_FRONT_DEG, ShootingStars, Stars } from "@/components/sky-decor";
 
 type Props = {
     bodies: SkyBody[];
@@ -28,7 +30,8 @@ const COLORS = {
     label: "#C8CEF5",
     north: "#F7B7C8",
     grid: "#A9B4FF",
-    star: "#FFFFFF",
+    moonLit: "#F5F3EE",
+    moonDark: "#0A0F2C", // the unlit part: a faint disc against the sky
 };
 
 // also used by the "found it" flash
@@ -44,24 +47,6 @@ const GRID_LINES = [
     ...[30, 60].map((altitude) => range(0, 360, 5).map((bearing) => ({ bearing, altitude }))),
 ];
 
-// Decorative stars from a fixed seed (the same sky every night), placed in the sky.
-function seededRandom(seed: number) {
-    // mulberry32
-    return () => {
-        seed = (seed + 0x6d2b79f5) | 0;
-        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-}
-const random = seededRandom(42);
-const STARS = Array.from({ length: 150 }, () => ({
-    bearing: random() * 360,
-    // asin spreads them evenly over the dome
-    altitude: (Math.asin(random()) * 180) / Math.PI,
-    radius: 0.6 + random() * 1.0,
-    opacity: 0.3 + random() * 0.6,
-}));
 // stars are fully out at nautical twilight (sun 12 degrees below the horizon)
 const FULL_NIGHT_SUN_ALTITUDE = -12;
 
@@ -99,13 +84,34 @@ function useSmoothedBasis(E: Vec3, N: Vec3, U: Vec3) {
 }
 
 const GROUND_FADE_PX = 320;
+const MOON_RADIUS = 13; // the disc, inside its glow
 
-// further than this from the centre = behind you (would project upside down)
-const IN_FRONT_DEG = 80;
+// The moon as it really looks tonight: the lit part is half the disc plus or minus half
+// an ellipse (the terminator), turned so the lit side faces the sun.
+function Moon({ x, y, scale, phase, angle }: { x: number; y: number; scale: number; phase: MoonPhase; angle: number }) {
+    const r = MOON_RADIUS * scale;
+    const terminator = r * Math.abs(1 - 2 * phase.fraction); // 0 at half moon
+    const bulge = phase.fraction < 0.5 ? 0 : 1; // crescent: towards the lit side; gibbous: away
+    // drawn with the lit side to the right, then turned
+    const lit = `M0,${-r}A${r},${r} 0 0,1 0,${r}A${terminator},${r} 0 0,${bulge} 0,${-r}Z`;
+    return (
+        <G transform={`translate(${x} ${y}) rotate(${angle})`}>
+            {/* dimmer glow when less of it is lit */}
+            <Circle r={48 * scale} fill="url(#moon)" opacity={0.3 + 0.7 * phase.fraction} />
+            <Circle r={r} fill={COLORS.moonDark} fillOpacity={0.35} />
+            <Path d={lit} fill={COLORS.moonLit} />
+        </G>
+    );
+}
+// shooting stars once the stars are mostly out
+const SHOOTING_STARS_FROM = 0.5;
 
 export function SkyScene({ bodies, sunAltitude, declination, ...raw }: Props) {
     const palette = skyColors(sunAltitude);
     const { width, height } = useSafeAreaFrame();
+    // The sky always shows the same degrees top to bottom, so on a taller screen (tablet)
+    // it's bigger; fixed-size things (stars, glows, letters) grow with it.
+    const k = Math.max(1, height / FRAME.height);
     const { E, N, U } = useSmoothedBasis(raw.E, raw.N, raw.U);
     const { ground, horizon, groundDir, horizonPoint, skyHigh } = groundPolygon(U, width, height);
     const fadeFrom = horizon.length === 2
@@ -123,8 +129,10 @@ export function SkyScene({ bodies, sunAltitude, declination, ...raw }: Props) {
             if (p.angleFromCenter < IN_FRONT_DEG) segments[segments.length - 1].push(`${p.x},${p.y}`);
             else if (segments[segments.length - 1].length > 0) segments.push([]);
         }
-        return segments.filter((seg) => seg.length > 1).map((seg) => seg.join(" "));
+        return segments.filter((seg) => seg.length > 1).map((seg) => `M${seg.join("L")}`);
     };
+    // the whole grid as one path
+    const grid = GRID_LINES.flatMap(visibleSegments).join("");
 
     const night = Math.min(1, Math.max(0, sunAltitude / FULL_NIGHT_SUN_ALTITUDE));
 
@@ -154,37 +162,33 @@ export function SkyScene({ bodies, sunAltitude, declination, ...raw }: Props) {
                     <Stop offset="0.3" stopColor={BODY_COLORS.sun} stopOpacity="0.9" />
                     <Stop offset="1" stopColor="#FFB347" stopOpacity="0" />
                 </RadialGradient>
+                {/* only a glow - the disc itself is drawn by <Moon> */}
                 <RadialGradient id="moon">
-                    <Stop offset="0" stopColor="#F5F3EE" />
-                    <Stop offset="0.3" stopColor={BODY_COLORS.moon} stopOpacity="0.7" />
+                    <Stop offset="0.2" stopColor={BODY_COLORS.moon} stopOpacity="0.6" />
+                    <Stop offset="0.45" stopColor={BODY_COLORS.moon} stopOpacity="0.25" />
                     <Stop offset="1" stopColor="#C9D3FF" stopOpacity="0" />
                 </RadialGradient>
             </Defs>
 
             <Rect x="0" y="0" width={width} height={height} fill="url(#sky)" />
 
-            {night > 0 && STARS.map((star, i) => {
-                const p = at(star.bearing, star.altitude);
-                if (!p.visible) return null;
-                return <Circle key={i} cx={p.x} cy={p.y} r={star.radius} fill={COLORS.star} fillOpacity={star.opacity * night} />;
-            })}
+            <Stars at={at} night={night} scale={k} />
+            <ShootingStars at={at} active={night >= SHOOTING_STARS_FROM} scale={k} />
 
-            {GRID_LINES.flatMap((line, i) => visibleSegments(line).map((points, j) => (
-                <Polyline
-                    key={`${i}-${j}`}
-                    points={points}
-                    fill="none" stroke={COLORS.grid} strokeOpacity={GRID_OPACITY} strokeWidth={1}
-                />
-            )))}
+            {grid !== "" && <Path d={grid} fill="none" stroke={COLORS.grid} strokeOpacity={GRID_OPACITY} strokeWidth={1} />}
+
+            {/* in front of the grid, behind the sun/moon glows */}
+            <Clouds at={at} color={palette.cloud} opacity={palette.cloudOpacity} bodies={bodies} />
 
             {/* drawn before the ground, so a setting sun/moon sinks behind it */}
-            {placed.map(({ body, p }) => (
-                <Circle
-                    key={body.name}
-                    cx={p.x} cy={p.y}
-                    r={body.name === "sun" ? 56 : 48}
-                    fill={`url(#${body.name})`}
+            {placed.map(({ body, p }) => body.phase ? (
+                <Moon
+                    key={body.name} x={p.x} y={p.y} scale={k} phase={body.phase}
+                    // lit side to the right when waxing, left when waning (as seen from the north)
+                    angle={(body.phase.sun && towardsSun(body, body.phase.sun, at)) ?? (body.phase.waxing ? 0 : 180)}
                 />
+            ) : (
+                <Circle key={body.name} cx={p.x} cy={p.y} r={56 * k} fill="url(#sun)" />
             ))}
 
             {ground.length > 2 && (
@@ -202,7 +206,7 @@ export function SkyScene({ bodies, sunAltitude, declination, ...raw }: Props) {
             {placed.filter(({ body }) => body.altitude < 0).map(({ body, p }) => (
                 <Circle
                     key={`${body.name}-ring`}
-                    cx={p.x} cy={p.y} r={14}
+                    cx={p.x} cy={p.y} r={14 * k}
                     fill="none" stroke={COLORS.label} strokeOpacity={0.35} strokeDasharray="3 4"
                 />
             ))}
@@ -213,10 +217,10 @@ export function SkyScene({ bodies, sunAltitude, declination, ...raw }: Props) {
                 return (
                     <Text
                         key={label}
-                        x={p.x} y={p.y - 10}
+                        x={p.x} y={p.y - 10 * k}
                         fill={label === "N" ? palette.north : palette.labels}
                         fillOpacity={0.5}
-                        fontSize={16} fontWeight="600" textAnchor="middle"
+                        fontSize={16 * k} fontWeight="600" textAnchor="middle"
                     >
                         {label}
                     </Text>

@@ -9,7 +9,7 @@ import { setLocation, setPresence } from "@/lib/api";
 import { cancelSkyReminders, sendTestReminder } from "@/lib/notifications";
 import { usePairStore } from "@/store/use-pair-store";
 import { useLocation } from "@/hooks/use-location";
-import { useSkyBodies, basisLookingAt } from "@/hooks/use-sky-bodies";
+import { useSkyBodies, basisLookingAt, type SkyBody } from "@/hooks/use-sky-bodies";
 import { useDeviceOrientation } from "@/hooks/use-device-orientation";
 import { usePairPresence, type Looking } from "@/hooks/use-pair-presence";
 import { useSkyReminders } from "@/hooks/use-sky-reminders";
@@ -30,6 +30,19 @@ const NIGHT_UNTIL_KNOWN = -20;
 const GLIDE_MS = 1200;
 const MAX_SKY_WAIT_MS = 4000; // show the sky anyway after this (e.g. a simulator has no sensors)
 const SKY_FADE_MS = 500;
+
+// Debug only: the moon's phases to cycle through (null = the real one tonight).
+const DEBUG_PHASES = [
+    null,
+    { label: "new", fraction: 0.02, waxing: true },
+    { label: "waxing crescent", fraction: 0.25, waxing: true },
+    { label: "first quarter", fraction: 0.5, waxing: true },
+    { label: "waxing gibbous", fraction: 0.8, waxing: true },
+    { label: "full", fraction: 1, waxing: true },
+    { label: "waning gibbous", fraction: 0.8, waxing: false },
+    { label: "last quarter", fraction: 0.5, waxing: false },
+    { label: "waning crescent", fraction: 0.25, waxing: false },
+];
 
 // Eases towards `target` instead of jumping, so the sky's colours change smoothly.
 // The first known value is taken straight away.
@@ -93,7 +106,7 @@ export default function Sky() {
         else Linking.openSettings();
     };
 
-    const { bodies, active } = useSkyBodies(coords);
+    const { bodies: realBodies, active: realActive } = useSkyBodies(coords);
     const sensors = useDeviceOrientation(!!coords);
     const { declination } = sensors;
 
@@ -116,6 +129,29 @@ export default function Sky() {
         Animated.timing(skyOpacity, { toValue: 1, duration: SKY_FADE_MS, useNativeDriver: true }).start(() => setFinding(false));
     }, [skyReady, skyOpacity]);
 
+    // Debug only: jump between times of day.
+    const [debugSky, setDebugSky] = useState<SkyPreset | null>(null);
+    const skyOrder: (SkyPreset | null)[] = [null, "day", "golden", "twilight", "night"];
+    const nextDebugSky = skyOrder[(skyOrder.indexOf(debugSky) + 1) % skyOrder.length];
+    const realSunAltitude = realBodies.find((b) => b.name === "sun")?.altitude;
+    const sunAltitude = useGlide(__DEV__ && debugSky ? SKY_PRESETS[debugSky] : realSunAltitude) ?? NIGHT_UNTIL_KNOWN;
+
+    // ...and show only the body that fits the preset (the moon at night/twilight, the
+    // sun by day), placed where the higher of the two really is, so it's up to show off.
+    const higher = realBodies.length > 0 ? realBodies.reduce((a, b) => (b.altitude > a.altitude ? b : a)) : null;
+    const shownName = debugSky && SKY_PRESETS[debugSky] > 0 ? "sun" : "moon";
+    const shownReal = realBodies.find((b) => b.name === shownName); // keeps the moon's phase
+    const debugShown: SkyBody | null = __DEV__ && debugSky && higher && shownReal
+        ? { ...shownReal, bearing: higher.bearing, altitude: higher.altitude, visible: higher.visible }
+        : null;
+    // Debug only: pretend it's another night in the moon's cycle.
+    const [debugPhase, setDebugPhase] = useState(0);
+    const phasePreset = __DEV__ ? DEBUG_PHASES[debugPhase] : null;
+    const nextPhase = DEBUG_PHASES[(debugPhase + 1) % DEBUG_PHASES.length];
+    const bodies = (debugShown ? [debugShown] : realBodies).map((b) =>
+        b.phase && phasePreset ? { ...b, phase: { fraction: phasePreset.fraction, waxing: phasePreset.waxing } } : b);
+    const active = debugShown ?? realActive;
+
     // Debug only: pretend the phone points straight at the sun or moon.
     const [debugTarget, setDebugTarget] = useState<Looking>(null);
     const debugBody = __DEV__ ? bodies.find((b) => b.name === debugTarget) : undefined;
@@ -123,13 +159,6 @@ export default function Sky() {
         ? basisLookingAt(debugBody.bearing, debugBody.altitude, declination)
         : sensors;
     const nextDebugTarget: Looking = debugTarget === null ? "sun" : debugTarget === "sun" ? "moon" : null;
-
-    // Debug only: jump between times of day.
-    const [debugSky, setDebugSky] = useState<SkyPreset | null>(null);
-    const skyOrder: (SkyPreset | null)[] = [null, "day", "golden", "twilight", "night"];
-    const nextDebugSky = skyOrder[(skyOrder.indexOf(debugSky) + 1) % skyOrder.length];
-    const realSunAltitude = bodies.find((b) => b.name === "sun")?.altitude;
-    const sunAltitude = useGlide(__DEV__ && debugSky ? SKY_PRESETS[debugSky] : realSunAltitude) ?? NIGHT_UNTIL_KNOWN;
     const palette = skyColors(sunAltitude);
 
     const [myLooking, setMyLooking] = useState<Looking>(null);
@@ -212,6 +241,14 @@ export default function Sky() {
                     style={{ position: "absolute", top: insets.top + 120, right: 12, zIndex: 2 }}
                 >
                     <Pill>{`Debug sky: ${debugSky ?? "real"} -> ${nextDebugSky ?? "real"}`}</Pill>
+                </Pressable>
+            )}
+            {__DEV__ && (
+                <Pressable
+                    onPress={() => setDebugPhase((debugPhase + 1) % DEBUG_PHASES.length)}
+                    style={{ position: "absolute", top: insets.top + 156, right: 12, zIndex: 2 }}
+                >
+                    <Pill>{`Debug moon: ${phasePreset?.label ?? "real"} -> ${nextPhase?.label ?? "real"}`}</Pill>
                 </Pressable>
             )}
 

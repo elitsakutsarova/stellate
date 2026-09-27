@@ -8,7 +8,6 @@ import { usePairStore } from "@/store/use-pair-store";
 import { LaunchScreen, useLaunch } from "@/components/launch-screen";
 import { COLORS, FONT_FILES } from "@/lib/theme";
 
-// LaunchScreen hides the native splash once it's on screen.
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -26,7 +25,6 @@ export default function RootLayout() {
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.night }}>
       <StatusBar style="light" />
-      {/* rendered underneath the launch screen as soon as it's ready */}
       {ready && (
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: COLORS.night }, animation: "fade" }} />
       )}

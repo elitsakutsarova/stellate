@@ -2,7 +2,11 @@ import { useEffect, useState } from "react";
 import type { Vec3 } from "./use-device-orientation";
 
 const SunCalc = require("suncalc");
-type Body = { altitude: number; bearing: number; visible: boolean }; // visible = above the horizon
+type SkyPoint = { bearing: number; altitude: number };
+// fraction: how much of the moon is lit (0 new - 1 full). sun: where the light comes
+// from (left out by the debug phases, which then use waxing to pick a side).
+export type MoonPhase = { fraction: number; waxing: boolean; sun?: SkyPoint };
+type Body = SkyPoint & { visible: boolean; phase?: MoonPhase }; // visible = above the horizon
 export type SkyBody = Body & { name: "sun" | "moon" };
 
 // Degrees of sky shown top to bottom. x and y share one scale, so the sky isn't stretched.
@@ -14,6 +18,29 @@ function targetVector(azimuthDeg: number, altitudeDeg: number): Vec3 {
     const az = azimuthDeg * (Math.PI / 180);
     const alt = altitudeDeg * (Math.PI / 180);
     return { x: Math.sin(az) * Math.cos(alt), y: Math.cos(az) * Math.cos(alt), z: Math.sin(alt) };
+}
+
+// The screen angle (degrees, 0 = right, clockwise) the moon's lit side faces: towards
+// the sun, along the sky - so it's right however the phone is held. Found by projecting
+// a point 1 degree from the moon towards the sun. null if the sun sits right on the
+// moon (only in debug mode, where the moon is moved there).
+export function towardsSun(moon: SkyPoint, sun: SkyPoint, at: (bearing: number, altitude: number) => { x: number; y: number }) {
+    const m = targetVector(moon.bearing, moon.altitude);
+    const s = targetVector(sun.bearing, sun.altitude);
+    const along = m.x * s.x + m.y * s.y + m.z * s.z;
+    // the direction towards the sun, flat against the sky at the moon
+    const t = { x: s.x - along * m.x, y: s.y - along * m.y, z: s.z - along * m.z };
+    const length = Math.hypot(t.x, t.y, t.z);
+    if (length < 0.02) return null;
+    const step = Math.PI / 180;
+    const p = {
+        x: m.x * Math.cos(step) + (t.x / length) * Math.sin(step),
+        y: m.y * Math.cos(step) + (t.y / length) * Math.sin(step),
+        z: m.z * Math.cos(step) + (t.z / length) * Math.sin(step),
+    };
+    const from = at(moon.bearing, moon.altitude);
+    const to = at((Math.atan2(p.x, p.y) * 180) / Math.PI, (Math.asin(p.z) * 180) / Math.PI);
+    return (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI;
 }
 
 // Projects a real-world (bearing, altitude) onto the screen through the phone's
@@ -142,6 +169,7 @@ export function useSkyBodies(coords: { latitude: number; longitude: number } | n
             const now = new Date();
             const sunPos = SunCalc.getPosition(now, latitude, longitude);
             const moonPos = SunCalc.getMoonPosition(now, latitude, longitude);
+            const illumination = SunCalc.getMoonIllumination(now);
 
             setSun({
                 altitude: sunPos.altitude,
@@ -152,6 +180,11 @@ export function useSkyBodies(coords: { latitude: number; longitude: number } | n
                 altitude: moonPos.altitude,
                 bearing: moonPos.azimuth,
                 visible: moonPos.altitude > 0,
+                phase: {
+                    fraction: illumination.fraction,
+                    waxing: illumination.phase < 0.5, // suncalc: 0 new, 0.5 full, back to 1
+                    sun: { bearing: sunPos.azimuth, altitude: sunPos.altitude },
+                },
             });
         }
 

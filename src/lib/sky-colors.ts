@@ -10,15 +10,16 @@ type Keyframe = {
     labels: string;     // compass letters + horizon line (readable on the horizon colour)
     north: string;      // the "N", in its own accent colour
     card: Rgba;         // status card / pill background: white glass at night, smoked glass by day
+    cloud: Rgba;        // clouds: colour + how visible (none at night, peach at sunset)
     daylight: number;   // 0 = night look for panels (original colours), 1 = day look (blue)
 };
 
 const KEYFRAMES: Keyframe[] = [
-    { sun: -18, zenith: "#0A0F2C", horizon: "#3A2E5C", ground: "#1C1A3F", labels: "#C8CEF5", north: "#F7B7C8", card: [255, 255, 255, 0.05], daylight: 0 }, // night
-    { sun: -12, zenith: "#0A0F2C", horizon: "#2B2A5A", ground: "#1C1A3F", labels: "#C8CEF5", north: "#F7B7C8", card: [255, 255, 255, 0.05], daylight: 0 }, // night
-    { sun: -5, zenith: "#1C2A5E", horizon: "#8A6A9E", ground: "#1E1B3A", labels: "#C8CEF5", north: "#F7B7C8", card: [255, 255, 255, 0.06], daylight: 0 },  // twilight
-    { sun: 2, zenith: "#1F3A6E", horizon: "#F4B183", ground: "#2A2440", labels: "#1D3A6E", north: "#9E3A5E", card: [12, 18, 44, 0.3], daylight: 1 },         // golden hour
-    { sun: 15, zenith: "#031851", horizon: "#74baeb", ground: "#1F2D4A", labels: "#1D4E9E", north: "#A8325E", card: [8, 20, 48, 0.32], daylight: 1 },       // day
+    { sun: -18, zenith: "#0A0F2C", horizon: "#3A2E5C", ground: "#1C1A3F", labels: "#C8CEF5", north: "#F7B7C8", card: [255, 255, 255, 0.05], cloud: [150, 130, 180, 0], daylight: 0 }, // night
+    { sun: -12, zenith: "#0A0F2C", horizon: "#2B2A5A", ground: "#1C1A3F", labels: "#C8CEF5", north: "#F7B7C8", card: [255, 255, 255, 0.05], cloud: [150, 130, 180, 0], daylight: 0 }, // night
+    { sun: -5, zenith: "#1C2A5E", horizon: "#8A6A9E", ground: "#1E1B3A", labels: "#C8CEF5", north: "#F7B7C8", card: [255, 255, 255, 0.06], cloud: [156, 128, 176, 0.3], daylight: 0 },  // twilight
+    { sun: 2, zenith: "#1F3A6E", horizon: "#F4B183", ground: "#2A2440", labels: "#1D3A6E", north: "#9E3A5E", card: [12, 18, 44, 0.3], cloud: [255, 196, 176, 0.85], daylight: 1 },         // golden hour
+    { sun: 15, zenith: "#031851", horizon: "#74baeb", ground: "#1F2D4A", labels: "#1D4E9E", north: "#A8325E", card: [8, 20, 48, 0.32], cloud: [255, 255, 255, 0.8], daylight: 1 },       // day
 ];
 
 export const SKY_PRESETS = { day: 40, golden: 2, twilight: -5, night: -20 } as const;
@@ -49,6 +50,7 @@ export function skyColors(sunAltitude: number) {
     const zenith = blend("zenith");
     const horizon = blend("horizon");
     const card = mixRgb(a.card, b.card, t);
+    const cloud = mixRgb(a.cloud, b.cloud, t);
     const day = mix(a.daylight, b.daylight, t); 
     return {
         zenith: css(zenith),
@@ -57,6 +59,8 @@ export function skyColors(sunAltitude: number) {
         ground: css(blend("ground")),
         labels: css(blend("labels")),
         north: css(blend("north")),
+        cloud: css(cloud.slice(0, 3)),
+        cloudOpacity: cloud[3],
         card: `rgba(${card.slice(0, 3).map(Math.round).join(", ")}, ${card[3].toFixed(3)})`,
         surface: css(mixRgb(mixRgb(zenith, DEEP, 0.3), mixRgb(zenith, PANEL_BLUE, 0.55), day)),
         menuAccent: css(mixRgb(NIGHT_ACCENT, DAY_ACCENT, day)),
