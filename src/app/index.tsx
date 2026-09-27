@@ -41,7 +41,10 @@ const PANEL = {
 
 export default function Index() {
   const insets = useSafeAreaInsets();
-  const { width, height } = useSafeAreaFrame();
+  const frame = useSafeAreaFrame();
+  // the space this screen really has - on some tablets less than the whole window
+  const [box, setBox] = useState<{ width: number; height: number } | null>(null);
+  const { width, height } = box ?? frame;
   const launchDone = useLaunch((state) => state.done);
   const deviceId = usePairStore((state) => state.deviceId);
   const pairId = usePairStore((state) => state.pairId);
@@ -182,7 +185,7 @@ export default function Index() {
   const connectProps = { joinCode, setJoinCode, busy, onCreate: handleCreate, onJoin: handleJoin };
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1 }} onLayout={(e) => setBox(e.nativeEvent.layout)}>
       <NightBackground glowY={0.25} />
 
       <View pointerEvents="none" style={{ position: "absolute", opacity: 0, left: 0, top: 0, width: columnWidth }}>
