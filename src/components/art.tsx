@@ -91,3 +91,15 @@ export function ShareIcon({ size = 24, color }: { size?: number; color: string }
         </Svg>
     );
 }
+
+// The paper plane's outline without its middle line, turned to point
+// straight up - the "this way to the sun/moon" arrow (rotated by the caller).
+export function ArrowIcon({ size = 28, color }: { size?: number; color: string }) {
+    return (
+        <Svg width={size} height={size} viewBox="-2 -3 28 28" fill="none">
+            <G rotation={-45} origin="12, 12">
+                <Path d="M21 3l-7 18-4-7-7-4 18-7z" stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
+            </G>
+        </Svg>
+    );
+}

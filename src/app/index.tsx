@@ -1,19 +1,19 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  Alert, Animated, BackHandler, Easing, KeyboardAvoidingView, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View,
+  Alert, Animated, BackHandler, Easing, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import * as Clipboard from "expo-clipboard";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createPair, joinPair } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import { pairChannel, PAIR_CHANGED_EVENT } from "@/lib/constants";
-import { COLORS, FONTS, RADIUS } from "@/lib/theme";
+import { COLORS, FONTS, FRAME, fitScale } from "@/lib/theme";
 import { usePairStore } from "@/store/use-pair-store";
-import { CopyIcon, Logo, ShareIcon } from "@/components/art";
-import { ARRANGEMENTS, FRAME, fitScale, SunMoon } from "@/components/sun-moon";
+import { Logo } from "@/components/art";
+import { CodeRow } from "@/components/code-row";
+import { ARRANGEMENTS, SunMoon } from "@/components/sun-moon";
 import { BottomSheet } from "@/components/bottom-sheet";
 import { useLaunch } from "@/components/launch-screen";
 import { Body, Button, glass, MAX_TEXT_WIDTH, NightBackground, Title } from "@/components/ui";
@@ -73,11 +73,33 @@ export default function Index() {
     return () => wave.removeListener(id);
   }, [wave]);
 
+  // Chat-app style: when the keyboard opens, slide the panel up by as much as
+  // the keyboard covers, so the code field stays in view while you type.
+  // (Done by hand: on newer Android the app draws behind the keyboard area,
+  // and KeyboardAvoidingView often doesn't notice the keyboard there.)
+  const keyboardLift = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const ios = Platform.OS === "ios";
+    const slide = (to: number, duration = 220) =>
+      Animated.timing(keyboardLift, { toValue: to, duration, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    const show = Keyboard.addListener(ios ? "keyboardWillShow" : "keyboardDidShow", (e) => {
+      // the panel already keeps this much clear at the bottom, so only lift the rest
+      const covered = e.endCoordinates.height - insets.bottom - BOTTOM_GAP + 12;
+      slide(-Math.max(0, covered), ios ? e.duration : undefined);
+    });
+    const hide = Keyboard.addListener(ios ? "keyboardWillHide" : "keyboardDidHide", (e) =>
+      slide(0, ios ? e.duration : undefined)
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [keyboardLift, insets.bottom]);
+
   const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState<"create" | "join" | null>(null);
   const [pendingPair, setPendingPair] = useState<Pair | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
   const waitChannel = useRef<RealtimeChannel | null>(null);
 
   // ---- layout (all in screen points) ----
@@ -163,7 +185,6 @@ export default function Index() {
     setBusy("create");
     try {
       setPendingPair(await createPair(deviceId));
-      setCopied(false);
       setSheetOpen(true);
     } catch (err: any) {
       Alert.alert("Something went wrong", err.message);
@@ -180,13 +201,6 @@ export default function Index() {
       Alert.alert("Couldn't connect", err.message);
     }
     setBusy(null);
-  };
-
-  const copyCode = async () => {
-    if (!pendingPair) return;
-    await Clipboard.setStringAsync(pendingPair.code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
   };
 
   if (!isHydrated || pairId) return <View style={{ flex: 1, backgroundColor: COLORS.night }} />;
@@ -238,17 +252,20 @@ export default function Index() {
           </Animated.View>
 
           {/* The glass panel: laid out at the higher of the two steps' tops and
-              slid down for the other - moving it is a transform, so it runs
-              smoothly on the native side. Keyboard-aware; the scroll view only
-              ever scrolls when the keyboard takes up the space. */}
-          <KeyboardAvoidingView behavior="padding" style={StyleSheet.absoluteFill} pointerEvents="box-none">
+              slid down for the other, plus lifted above the keyboard while it's
+              open - moving it is a transform, so it runs smoothly on the
+              native side. */}
+          <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
             <Animated.View
               style={{
                 position: "absolute", left: 0, right: 0, bottom: 0, top: panelBase,
                 transform: [{
-                  translateY: art.interpolate({
-                    inputRange: [1, 2], outputRange: [panelShift("welcome"), panelShift("connect")], extrapolate: "clamp",
-                  }),
+                  translateY: Animated.add(
+                    art.interpolate({
+                      inputRange: [1, 2], outputRange: [panelShift("welcome"), panelShift("connect")], extrapolate: "clamp",
+                    }),
+                    keyboardLift,
+                  ),
                 }],
               }}
             >
@@ -269,7 +286,7 @@ export default function Index() {
                 </Animated.View>
               </ScrollView>
             </Animated.View>
-          </KeyboardAvoidingView>
+          </View>
         </>
       )}
 
@@ -290,32 +307,7 @@ export default function Index() {
           <Body style={{ color: COLORS.muted, fontSize: 14 }}>Invite the person you care about.</Body>
         </View>
 
-        <View style={{ flexDirection: "row", gap: 12 }}>
-          <Pressable
-            onPress={copyCode}
-            accessibilityLabel="Copy code"
-            style={[glass, { flex: 1, minHeight: 60, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}
-          >
-            <Text style={{ fontFamily: FONTS.medium, fontSize: 26, letterSpacing: 6, color: COLORS.text }}>
-              {pendingPair?.code}
-            </Text>
-            {copied ? (
-              <Text style={{ fontFamily: FONTS.regular, fontSize: 13, color: COLORS.online }}>Copied</Text>
-            ) : (
-              <CopyIcon color={COLORS.text} />
-            )}
-          </Pressable>
-          <Pressable
-            onPress={() => pendingPair && Share.share({ message: `Join me on Stellate: ${pendingPair.code}` })}
-            accessibilityLabel="Share code"
-            style={({ pressed }) => ({
-              width: 60, borderRadius: RADIUS, backgroundColor: COLORS.accent,
-              alignItems: "center", justifyContent: "center", opacity: pressed ? 0.75 : 1,
-            })}
-          >
-            <ShareIcon color={COLORS.onAccent} />
-          </Pressable>
-        </View>
+        {pendingPair && <CodeRow code={pendingPair.code} />}
 
         <WaitingLine>Waiting for your special someone to join</WaitingLine>
 
@@ -371,7 +363,9 @@ function ConnectContent({ joinCode, setJoinCode, busy, onCreate, onJoin, measuri
             autoCorrect={false}
             maxLength={6}
             value={joinCode}
-            onChangeText={setJoinCode}
+            // codes only use A-Z (without I and O) and 2-9 - anything else
+            // can't be part of one, so it's dropped as you type
+            onChangeText={(text) => setJoinCode(text.toUpperCase().replace(/[^A-HJ-NP-Z2-9]/g, ""))}
             onSubmitEditing={onJoin}
             returnKeyType="done"
             style={[glass, { flex: 1, minHeight: 54, paddingHorizontal: 16, color: COLORS.text, fontFamily: FONTS.medium, fontSize: 17, letterSpacing: 2 }]}

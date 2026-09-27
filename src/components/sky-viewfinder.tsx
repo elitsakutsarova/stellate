@@ -5,6 +5,9 @@ import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-cont
 import { projectToScreen, type SkyBody } from "@/hooks/use-sky-bodies";
 import type { Vec3 } from "@/hooks/use-device-orientation";
 import type { Looking } from "@/hooks/use-pair-presence";
+import { COLORS, FONTS, fitScale } from "@/lib/theme";
+import { MENU_BUTTON_CENTER } from "@/components/side-menu";
+import { ArrowIcon } from "@/components/art";
 
 // How far in from each screen edge the body's centre must be before it counts
 // as "looking" (fraction of width/height) - so the tap, flash and together
@@ -35,6 +38,8 @@ type Props = {
 export function SkyViewfinder({ bodies, active, E, N, U, declination, onLookingChange }: Props) {
     const { width, height } = useSafeAreaFrame();
     const insets = useSafeAreaInsets();
+    const hintSize = 12 * Math.max(1, fitScale(width, height));
+    const hintLine = Math.round(hintSize * 1.4);
     const projection = active
         ? projectToScreen(E, N, U, declination, active.bearing, active.altitude, width, height)
         : null;
@@ -113,11 +118,18 @@ export function SkyViewfinder({ bodies, active, E, N, U, declination, onLookingC
             pointerEvents="box-none"
             style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}
         >
-            <Text style={{ position: "absolute", top: insets.top + 16, alignSelf: "center", color: "#C8CEF5" }}>
+            {/* small on phones, growing on tablets; its middle lines up with the ☰ button's */}
+            <Text
+                style={{
+                    position: "absolute", alignSelf: "center",
+                    top: insets.top + MENU_BUTTON_CENTER - hintLine / 2,
+                    fontFamily: FONTS.regular, fontSize: hintSize, lineHeight: hintLine, color: COLORS.muted,
+                }}
+            >
                 Follow the arrow to find the {active.name}
             </Text>
             <View ref={arrowRef} style={{ position: "absolute" }}>
-                <Text style={{ fontSize: 32, color: "#C8CEF5" }}>▲</Text>
+                <ArrowIcon size={32} color={COLORS.text} />
             </View>
         </View>
     );

@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { View, Text, Pressable, Alert } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Clipboard from "expo-clipboard";
-import { Share } from "react-native";
+import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Linking from "expo-linking";
 import { setLocation, setPresence } from "@/lib/api";
 import { cancelSkyReminders, sendTestReminder } from "@/lib/notifications";
@@ -20,21 +18,17 @@ import { SkyViewfinder } from "@/components/sky-viewfinder";
 import { SkyScene } from "@/components/sky-scene";
 import { FoundFlash, TogetherGlow } from "@/components/edge-glow";
 import { MenuHeading, MenuToggle, SideMenu } from "@/components/side-menu";
-
-// Light-on-dark text colours for the drawn night sky - placeholder styling
-// until there's a real design for this screen.
-const TEXT = {
-    main: "#EEF0FF",
-    muted: "#8C93B8",
-    link: "#AFC3FF",
-    online: "#9FE3D0",
-    danger: "#F7A1A1",
-    together: "#F7B7C8",
-};
+import { BottomSheet } from "@/components/bottom-sheet";
+import { CodeRow } from "@/components/code-row";
+import { Body, Button, MAX_TEXT_WIDTH, Pill, Title } from "@/components/ui";
+import { COLORS, fitScale } from "@/lib/theme";
 
 export default function Sky() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { width, height } = useSafeAreaFrame();
+    // 1 on phones, bigger on tablets - the status card's size follows it
+    const s = Math.max(1, fitScale(width, height));
     const deviceId = usePairStore((state) => state.deviceId);
     const pairId = usePairStore((state) => state.pairId);
     const isHydrated = usePairStore((state) => state.isHydrated);
@@ -56,19 +50,20 @@ export default function Sky() {
     useSkyReminders(notifications.reminders, coords, partnerLeft ? null : pair?.partnerLocation ?? null);
     const [menuOpen, setMenuOpen] = useState(false);
 
-    // Pops up whenever the error actually changes (e.g. first denied, or
-    // switches from "denied" to "go to Settings") - not on every repeated
-    // foreground re-check that still finds the same denial, since setting
-    // state to an identical value doesn't trigger a re-render/effect.
+    // The location sheet opens whenever the error actually changes (e.g. first
+    // denied, or switches from "denied" to "go to Settings") - not on every
+    // repeated foreground re-check that still finds the same denial, since
+    // setting state to an identical value doesn't trigger this effect - and
+    // closes by itself once location works.
+    const [locationSheet, setLocationSheet] = useState(false);
     useEffect(() => {
-        if (!locationError) return;
-        Alert.alert("Location needed", locationError, [
-            { text: "Not now", style: "cancel" },
-            canAskAgain
-                ? { text: "Try again", onPress: retry }
-                : { text: "Open Settings", onPress: () => Linking.openSettings() },
-        ]);
-    }, [locationError, canAskAgain, retry]);
+        setLocationSheet(!!locationError);
+    }, [locationError]);
+    const fixLocation = () => {
+        setLocationSheet(false);
+        if (canAskAgain) retry();
+        else Linking.openSettings();
+    };
 
     const { bodies, active } = useSkyBodies(coords);
     const sensors = useDeviceOrientation(!!coords);
@@ -115,18 +110,23 @@ export default function Sky() {
         router.replace("/");
     };
 
-    const confirmDisconnect = () => {
-        Alert.alert("Disconnect?", "You'll leave this connection. You can reconnect later with the same code.", [
-            { text: "Cancel", style: "cancel" },
-            { text: "Disconnect", style: "destructive", onPress: handleDisconnect },
-        ]);
-    };
+    const [disconnectSheet, setDisconnectSheet] = useState(false);
+
+    // The one line the status card shows (the together moment has its own).
+    const status = partnerLeft
+        ? { text: "Your special someone left this connection.", color: COLORS.muted }
+        : partnerLooking
+            ? { text: `● Your special someone is looking at the ${partnerLooking} right now`, color: COLORS.online }
+            : partnerOnline
+                ? { text: "● Your special someone is here now", color: COLORS.online }
+                : { text: "○ Your special someone isn't in the app right now", color: COLORS.muted };
 
     return (
         // Full screen (header hidden) so the drawn sky's maths, which uses the
-        // window size, matches exactly what's on screen. Controls sit at the
-        // bottom, leaving the middle of the screen for the sky.
-        <View style={{ flex: 1, backgroundColor: "#0A0F2C" }}>
+        // screen size, matches exactly what's on screen. The sky gets the whole
+        // screen; everything else is kept small: a status card at the bottom,
+        // the rest in the side menu.
+        <View style={{ flex: 1, backgroundColor: COLORS.night }}>
             <Stack.Screen options={{ headerShown: false }} />
             <StatusBar style="light" />
 
@@ -135,104 +135,124 @@ export default function Sky() {
             <FoundFlash looking={myLooking} />
             <TogetherGlow visible={together} />
 
+            {offline && (
+                <View pointerEvents="none" style={{ position: "absolute", top: insets.top + 48, left: 0, right: 0, alignItems: "center", zIndex: 2 }}>
+                    <Pill>Reconnecting...</Pill>
+                </View>
+            )}
+
             {__DEV__ && bodies.length > 0 && (
                 <Pressable
                     onPress={() => setDebugTarget(nextDebugTarget)}
-                    style={{ position: "absolute", top: insets.top + 48, right: 12, zIndex: 2, padding: 8, borderRadius: 8, backgroundColor: "#FFFFFF22" }}
+                    style={{ position: "absolute", top: insets.top + 84, right: 12, zIndex: 2 }}
                 >
-                    <Text style={{ fontSize: 12, color: TEXT.main }}>
-                        {nextDebugTarget ? `Debug: look at ${nextDebugTarget}` : "Debug: sensors"}
-                    </Text>
+                    <Pill>{nextDebugTarget ? `Debug: look at ${nextDebugTarget}` : "Debug: sensors"}</Pill>
                 </Pressable>
             )}
 
-            <View style={{ flex: 1, justifyContent: "flex-end", alignItems: "center", gap: 16, padding: 24, paddingBottom: insets.bottom + 24, zIndex: 2 }} pointerEvents="box-none">
-                {locationError && (
-                    <View style={{ alignItems: "center", gap: 8 }}>
-                        <Text style={{ color: TEXT.danger, textAlign: "center" }}>{locationError}</Text>
-                        <Pressable onPress={canAskAgain ? retry : () => Linking.openSettings()}>
-                            <Text style={{ color: TEXT.link }}>{canAskAgain ? "Try again" : "Open Settings"}</Text>
+            {/* Status card: quiet on purpose - it hugs its text, with a faint
+                glass look. Small on phones, scaled up (by s) on tablets. */}
+            <View
+                pointerEvents="box-none"
+                style={{ position: "absolute", left: 0, right: 0, bottom: insets.bottom + 20, paddingHorizontal: 24, alignItems: "center", zIndex: 2 }}
+            >
+                <View
+                    style={{
+                        maxWidth: MAX_TEXT_WIDTH * s, alignItems: "center", gap: 2 * s,
+                        paddingVertical: 8 * s, paddingHorizontal: 16 * s,
+                        borderRadius: together ? 20 * s : 999,
+                        backgroundColor: "rgba(255, 255, 255, 0.05)",
+                        borderWidth: 1, borderColor: "rgba(255, 255, 255, 0.1)",
+                    }}
+                >
+                    {together ? (
+                        <>
+                            <Title style={{ fontSize: 22 * s, lineHeight: 28 * s, color: COLORS.together, textAlign: "center" }}>
+                                You are now connected
+                            </Title>
+                            <Body style={{ color: COLORS.muted, fontSize: 12 * s, lineHeight: 17 * s, textAlign: "center" }}>
+                                {myLooking === partnerLooking
+                                    ? `You're both looking at the ${myLooking}`
+                                    : `You: the ${myLooking} · Your special someone: the ${partnerLooking}`}
+                            </Body>
+                        </>
+                    ) : (
+                        <Body style={{ color: status.color, fontSize: 13 * s, lineHeight: 18 * s, textAlign: "center" }}>{status.text}</Body>
+                    )}
+                    {locationError && !locationSheet && (
+                        <Pressable onPress={() => setLocationSheet(true)} hitSlop={8}>
+                            <Body style={{ color: COLORS.link, fontSize: 12 * s, lineHeight: 17 * s }}>Location is off - tap to fix</Body>
                         </Pressable>
-                    </View>
-                )}
-
-                {offline && (
-                    <Text style={{ color: TEXT.muted }}>Can't reach the server, retrying…</Text>
-                )}
-
-                {partnerLeft && (
-                    <View style={{ backgroundColor: "#FFFFFF1A", padding: 12, borderRadius: 10 }}>
-                        <Text style={{ color: TEXT.main }}>Your special someone left this connection.</Text>
-                    </View>
-                )}
-                {together && (
-                    <View style={{ alignItems: "center", gap: 4 }}>
-                        <Text style={{ color: TEXT.together, fontSize: 20, fontWeight: "600" }}>You are now connected</Text>
-                        <Text style={{ color: TEXT.muted, textAlign: "center" }}>
-                            {myLooking === partnerLooking
-                                ? `You're both looking at the ${myLooking}`
-                                : `You: the ${myLooking} · Your special someone: the ${partnerLooking}`}
-                        </Text>
-                    </View>
-                )}
-                {!partnerLeft && !together && (
-                    <Text style={{ color: partnerOnline ? TEXT.online : TEXT.muted, textAlign: "center" }}>
-                        {partnerLooking
-                            ? `● Your special someone is looking at the ${partnerLooking} right now`
-                            : partnerOnline
-                                ? "● Your special someone is here now"
-                                : "○ Your special someone isn't in the app right now"}
-                    </Text>
-                )}
-
-                {pair && (
-                    <View style={{ alignItems: "center", gap: 6 }}>
-                        <Text style={{ color: TEXT.muted }}>Room code</Text>
-                        <Text style={{ fontSize: 24, fontWeight: "700", letterSpacing: 3, color: TEXT.main }}>{pair.code}</Text>
-                        <View style={{ flexDirection: "row", gap: 16 }}>
-                            <Pressable onPress={() => Clipboard.setStringAsync(pair.code)}>
-                                <Text style={{ color: TEXT.link }}>Copy</Text>
-                            </Pressable>
-                            <Pressable onPress={() => Share.share({ message: `Join me on Stellate: ${pair.code}` })}>
-                                <Text style={{ color: TEXT.link }}>Share</Text>
-                            </Pressable>
-                        </View>
-                    </View>
-                )}
-
-                <Pressable onPress={confirmDisconnect}>
-                    <Text style={{ color: TEXT.danger }}>Disconnect</Text>
-                </Pressable>
+                    )}
+                </View>
             </View>
 
             <SideMenu open={menuOpen} onOpenChange={setMenuOpen}>
-                <View style={{ gap: 16 }}>
-                    <MenuHeading>Notifications</MenuHeading>
-                    <MenuToggle
-                        label="When your special someone looks up"
-                        value={notifications.lookUp}
-                        onChange={(on) => notifications.toggle("lookUp", on)}
-                        disabled={!notifications.supported}
-                    />
-                    <MenuToggle
-                        label="When the sun or moon is up for both of you"
-                        value={notifications.reminders}
-                        onChange={(on) => notifications.toggle("reminders", on)}
-                        disabled={!notifications.supported}
-                    />
-                    {!notifications.supported && (
-                        <Text style={{ color: TEXT.muted, fontSize: 13 }}>
-                            Not available in Expo Go on Android - needs a development build.
-                        </Text>
+                <View style={{ gap: 36 }}>
+                    {pair && (
+                        <View style={{ gap: 12 }}>
+                            <MenuHeading>Your connection</MenuHeading>
+                            <CodeRow code={pair.code} size={20} />
+                        </View>
                     )}
+
+                    <View style={{ gap: 16 }}>
+                        <MenuHeading>Notifications</MenuHeading>
+                        <MenuToggle
+                            label="When your special someone looks up"
+                            value={notifications.lookUp}
+                            onChange={(on) => notifications.toggle("lookUp", on)}
+                            disabled={!notifications.supported}
+                        />
+                        <MenuToggle
+                            label="When the sun or moon is up for both of you"
+                            value={notifications.reminders}
+                            onChange={(on) => notifications.toggle("reminders", on)}
+                            disabled={!notifications.supported}
+                        />
+                        {!notifications.supported && (
+                            <Body style={{ color: COLORS.muted, fontSize: 13, lineHeight: 18 }}>
+                                Not available in Expo Go on Android - needs a development build.
+                            </Body>
+                        )}
+                        {__DEV__ && notifications.supported && (
+                            <Pressable onPress={sendTestReminder}>
+                                <Body style={{ color: COLORS.link, fontSize: 14 }}>Debug: test reminder in 10s</Body>
+                            </Pressable>
+                        )}
+                    </View>
                 </View>
 
-                {__DEV__ && notifications.supported && (
-                    <Pressable onPress={sendTestReminder}>
-                        <Text style={{ color: TEXT.link }}>Debug: test reminder in 10s</Text>
-                    </Pressable>
-                )}
+                <Button
+                    label="Disconnect" variant="danger"
+                    onPress={() => {
+                        setMenuOpen(false);
+                        setDisconnectSheet(true);
+                    }}
+                />
             </SideMenu>
+
+            <BottomSheet open={locationSheet} onClose={() => setLocationSheet(false)}>
+                <Title style={{ fontSize: 32, lineHeight: 38 }}>Location needed</Title>
+                <Body style={{ color: COLORS.muted }}>
+                    {canAskAgain
+                        ? "Stellate uses your location to find where the sun and moon are in your sky."
+                        : "Location is off for Stellate. Turn it on in Settings to find the sun and moon in your sky."}
+                </Body>
+                <View style={{ gap: 12 }}>
+                    <Button label={canAskAgain ? "Allow location" : "Open Settings"} onPress={fixLocation} />
+                    <Button label="Not now" variant="glass" onPress={() => setLocationSheet(false)} />
+                </View>
+            </BottomSheet>
+
+            <BottomSheet open={disconnectSheet} onClose={() => setDisconnectSheet(false)}>
+                <Title style={{ fontSize: 32, lineHeight: 38 }}>Leave this connection?</Title>
+                <Body style={{ color: COLORS.muted }}>You can reconnect later with the same code.</Body>
+                <View style={{ gap: 12 }}>
+                    <Button label="Disconnect" variant="danger" onPress={handleDisconnect} />
+                    <Button label="Cancel" variant="glass" onPress={() => setDisconnectSheet(false)} />
+                </View>
+            </BottomSheet>
         </View>
     );
 }

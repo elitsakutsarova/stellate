@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Animated, BackHandler, PanResponder, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS } from "@/lib/theme";
+import { MAX_TEXT_WIDTH } from "@/components/ui";
 
 const SLIDE_MS = 280;
 const DISMISS_PX = 100;     // drag down further than this to close...
@@ -63,13 +64,15 @@ export function BottomSheet({ open, onClose, children }: { open: boolean; onClos
                     borderTopLeftRadius: 28, borderTopRightRadius: 28,
                     borderWidth: 1, borderBottomWidth: 0, borderColor: COLORS.glassBorder,
                     paddingHorizontal: 24, paddingTop: 12, paddingBottom: insets.bottom + 24,
-                    gap: 20,
+                    gap: 20, alignItems: "center",
                     transform: [{ translateY: Animated.add(slide, drag) }],
                 }}
             >
                 {/* grab handle - shows it can be pulled down */}
                 <View style={{ alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.glassBorder }} />
-                {children}
+                {/* same capped-width column as the screens' content, so on a
+                    tablet the sheet's contents don't stretch across it all */}
+                <View style={{ width: "100%", maxWidth: MAX_TEXT_WIDTH, gap: 20 }}>{children}</View>
             </Animated.View>
         </View>
     );

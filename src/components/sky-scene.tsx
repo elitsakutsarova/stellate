@@ -4,6 +4,7 @@ import { useSafeAreaFrame } from "react-native-safe-area-context";
 import Svg, { Circle, Defs, Line, LinearGradient, Polygon, Polyline, RadialGradient, Rect, Stop, Text } from "react-native-svg";
 import { groundPolygon, projectToScreen, type SkyBody } from "@/hooks/use-sky-bodies";
 import { lerpVec, normalize, type Vec3 } from "@/hooks/use-device-orientation";
+import { COLORS as THEME } from "@/lib/theme";
 
 type Props = {
     bodies: SkyBody[];
@@ -20,11 +21,11 @@ const CARDINALS = [
     { label: "W", bearing: 270 },
 ];
 
-// Stylised night palette - placeholder until there's a real design.
+// The sky's own colours; the background gradient is the app's night theme.
 const COLORS = {
-    skyTop: "#0A0F2C",
-    skyMid: "#1B1F4B",
-    skyBottom: "#3A2E5C",
+    skyTop: THEME.night,
+    skyMid: THEME.nightMid,
+    skyBottom: THEME.nightLow,
     groundNear: "#1C1A3F", // at the horizon: clearly not sky…
     groundFar: "#05060F",  // …getting darker further down
     horizon: "#A9B4FF",

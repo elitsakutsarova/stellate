@@ -32,11 +32,6 @@ export const ARRANGEMENTS = {
     },
 } satisfies Record<string, Arrangement>;
 
-// The design frames' size. fitScale: how much bigger this screen is than
-// a frame, limited by whichever side has less room - so things grow on a
-// tablet but never spill off a wide-but-short screen.
-export const FRAME = { width: 393, height: 852 };
-export const fitScale = (width: number, height: number) => Math.min(width / FRAME.width, height / FRAME.height);
 
 // The line-art sun and moon, moving through a sequence of arrangements:
 // progress 0 = steps[0], 1 = steps[1], 2 = steps[2]... and smoothly in

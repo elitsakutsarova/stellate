@@ -5,8 +5,8 @@ import { useSafeAreaFrame } from "react-native-safe-area-context";
 import { create } from "zustand";
 import { Logo } from "@/components/art";
 import { NightBackground } from "@/components/ui";
-import { ARRANGEMENTS, fitScale, SunMoon } from "@/components/sun-moon";
-import { COLORS } from "@/lib/theme";
+import { ARRANGEMENTS, SunMoon } from "@/components/sun-moon";
+import { COLORS, fitScale } from "@/lib/theme";
 
 // Whether the launch screen has finished and faded away - screens that play
 // an entrance animation (welcome) wait for this, so it isn't wasted hidden

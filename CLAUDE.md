@@ -13,4 +13,5 @@
 # general rules
 - Treat every session as a teaching opportunity
 - follow the KISS and DRY methods
+- make app responsive
 

@@ -56,10 +56,11 @@ export function Body({ children, style }: { children: ReactNode; style?: StylePr
 
 // "primary": solid lavender - the one main action on a screen.
 // "glass": see-through - everything else.
+// "danger": see-through with red text - for leaving/deleting things.
 export function Button({ label, onPress, variant = "primary", busy, disabled, style }: {
     label: string;
     onPress: () => void;
-    variant?: "primary" | "glass";
+    variant?: "primary" | "glass" | "danger";
     busy?: boolean;          // shows a spinner instead of the label
     disabled?: boolean;
     style?: StyleProp<ViewStyle>;
@@ -83,7 +84,9 @@ export function Button({ label, onPress, variant = "primary", busy, disabled, st
             {busy ? (
                 <ActivityIndicator color={primary ? COLORS.onAccent : COLORS.text} />
             ) : (
-                <Text style={{ fontFamily: FONTS.medium, fontSize: 17, color: primary ? COLORS.onAccent : COLORS.text }}>{label}</Text>
+                <Text style={{ fontFamily: FONTS.medium, fontSize: 17, color: primary ? COLORS.onAccent : variant === "danger" ? COLORS.danger : COLORS.text }}>
+                    {label}
+                </Text>
             )}
         </Pressable>
     );
@@ -97,3 +100,17 @@ export const glass = {
     borderColor: COLORS.glassBorder,
     borderRadius: RADIUS,
 } satisfies ViewStyle;
+
+// A small rounded glass label, e.g. "Reconnecting...".
+export function Pill({ children }: { children: ReactNode }) {
+    return (
+        <Text
+            style={[glass, {
+                borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6, overflow: "hidden",
+                fontFamily: FONTS.regular, fontSize: 13, color: COLORS.muted,
+            }]}
+        >
+            {children}
+        </Text>
+    );
+}

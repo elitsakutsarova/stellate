@@ -45,3 +45,9 @@ export const FONT_FILES = {
 };
 
 export const RADIUS = 16;
+
+// The design frames' size. fitScale: how much bigger this screen is than a
+// frame, limited by whichever side has less room - so things grow on a
+// tablet but never spill off a wide-but-short screen. (~1 on phones.)
+export const FRAME = { width: 393, height: 852 };
+export const fitScale = (width: number, height: number) => Math.min(width / FRAME.width, height / FRAME.height);
