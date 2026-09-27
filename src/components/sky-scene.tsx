@@ -251,11 +251,10 @@ function PartnerLink({ sky, from, to, together, ground, scale }: {
     scale: number;
 }) {
     const { basis, declination, width, height } = sky;
-    // keeps the last target while shrinking away
+    // keeps the last target while shrinking away (updated during render - React's way to
+    // follow a prop in state, without an effect)
     const [target, setTarget] = useState(to);
-    useEffect(() => {
-        if (to) setTarget(to);
-    }, [to?.bearing, to?.altitude]);
+    if (to && (to.bearing !== target?.bearing || to.altitude !== target?.altitude || to.glow !== target?.glow)) setTarget(to);
 
     const grown = useSharedValue(0); // 0 = nothing, 1 = the whole line
     useEffect(() => {

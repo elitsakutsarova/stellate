@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
-import { DEVICE_ID_KEY, PAIR_ID_KEY, PAIR_CODE_KEY, NOTIFICATION_KEYS, type NotificationKind } from "@/lib/constants";
+import { DEVICE_ID_KEY, PAIR_ID_KEY, PAIR_CODE_KEY, NOTIFICATION_KEYS, timeTogetherKey, type NotificationKind } from "@/lib/constants";
 
 type PairStore = {
     deviceId: string | null;
@@ -9,20 +9,27 @@ type PairStore = {
     pairCode: string | null;
     isHydrated: boolean;
     notifications: Record<NotificationKind, boolean | null>;
+    secondsTogether: number;        // time you've both looked up at once, for this pair
     hydrate: () => Promise<void>;   // load deviceId + saved pair from AsyncStorage, once
     setPair: (id: string, code: string) => Promise<void>; // save + persist
     clearPair: () => Promise<void>; // disconnect
     setNotification: (kind: NotificationKind, on: boolean) => Promise<void>; // save + persist
+    addSecondTogether: () => void;  // +1 and persist (called every second while together)
 };
 
 const save = (work: Promise<unknown>) => work.catch((err) => console.warn("Couldn't save:", err));
 
-export const usePairStore = create<PairStore>((set) => ({
+// saved per pair, so reconnecting with the same code keeps your time
+const loadSecondsTogether = async (pairId: string) =>
+    Number(await AsyncStorage.getItem(timeTogetherKey(pairId)).catch(() => null)) || 0;
+
+export const usePairStore = create<PairStore>((set, get) => ({
     deviceId: null,
     pairId: null,
     pairCode: null,
     isHydrated: false,
     notifications: { reminders: null, lookUp: null },
+    secondsTogether: 0,
 
     hydrate: async () => {
         try {
@@ -38,7 +45,8 @@ export const usePairStore = create<PairStore>((set) => ({
                 return saved === null ? null : saved === "on";
             };
             const notifications = { reminders: await load("reminders"), lookUp: await load("lookUp") };
-            set({ deviceId, pairId, pairCode, notifications, isHydrated: true });
+            const secondsTogether = pairId ? await loadSecondsTogether(pairId) : 0;
+            set({ deviceId, pairId, pairCode, notifications, secondsTogether, isHydrated: true });
         } catch (err) {
             // never leave the app stuck on the launch screen - carry on as a fresh start
             console.warn("Couldn't load saved data:", err);
@@ -49,17 +57,26 @@ export const usePairStore = create<PairStore>((set) => ({
     // The app updates straight away; saving is best-effort, so a storage hiccup can't
     // block connecting, disconnecting or a toggle.
     setPair: async (id, code) => {
-        set({ pairId: id, pairCode: code });
+        set({ pairId: id, pairCode: code, secondsTogether: 0 });
         await save(AsyncStorage.multiSet([[PAIR_ID_KEY, id], [PAIR_CODE_KEY, code]]));
+        const seconds = await loadSecondsTogether(id);
+        if (get().pairId === id) set({ secondsTogether: seconds }); // still the same pair
     },
 
     clearPair: async () => {
-        set({ pairId: null, pairCode: null });
+        set({ pairId: null, pairCode: null, secondsTogether: 0 });
         await save(AsyncStorage.multiRemove([PAIR_ID_KEY, PAIR_CODE_KEY]));
     },
 
     setNotification: async (kind, on) => {
         set((state) => ({ notifications: { ...state.notifications, [kind]: on } }));
         await save(AsyncStorage.setItem(NOTIFICATION_KEYS[kind], on ? "on" : "off"));
+    },
+
+    addSecondTogether: () => {
+        const { pairId, secondsTogether } = get();
+        if (!pairId) return;
+        set({ secondsTogether: secondsTogether + 1 });
+        save(AsyncStorage.setItem(timeTogetherKey(pairId), String(secondsTogether + 1)));
     },
 }));

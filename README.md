@@ -4,28 +4,18 @@ App where two people pair up with a 6 character code and can see exactly where t
 
 ## How it works
 
-- One person creates a connection and gets a code
-- They share the code, the other person joins with it
-- Both land on the sky screen, which uses location + the phone's sensors to find the sun (or moon if it's night) and shows where to point your phone to see it
-- You can see if your partner has the app open, and disconnect/reconnect anytime with the same code
+- One person creates a connection and gets a code; the other person joins with it
+- Both land on the sky screen: GPS + the phone's compass and accelerometer work out where the phone points, and the real sky is drawn around you - sun, moon (with tonight's phase), stars, clouds, colours for the time of day
+- An arrow guides you to the sun or moon; finding it gives a haptic tap
+- You see if your special someone has the app open and what they're looking at. A pink light on your horizon shows which way they are (and how far), and a line joins it to the sky while they look up
+- When you're both looking up at once, the edges glow, you feel a few heartbeats, and "time together" counts up
+- Optional notifications: when the sun/moon is up for both of you, and when your special someone looks up
 
-## What I used
+## Assignment requirements
 
-- Expo / React Native for the app
-- Supabase for the database, and to keep things live between the two people (so you see when your partner connects/disconnects)
-- A small Express server for the more sensitive stuff (creating a pair, joining, updating presence) instead of doing it straight from the phone
-- zustand for the bit of state shared between the two screens (device id, current pair)
-- suncalc to calculate where the sun/moon actually is
-- expo-location + expo-sensors for gps and compass/accelerometer stuff, to know where the phone is pointing
-
-## Project folders
-
-- src/app - the two screens
-- src/components - the sky viewfinder (the icon + arrow that track the sun/moon)
-- src/hooks - one file per feature (location, phone orientation, sun/moon position, pair info)
-- src/store - the shared pair/device state
-- src/lib - supabase client + calls to my own backend
-- server - the backend
+- **Expo SDK:** expo-location (GPS), expo-sensors (accelerometer + magnetometer), expo-haptics, expo-notifications (push + scheduled), expo-keep-awake, expo-clipboard, expo-crypto, expo-font, expo-splash-screen, expo-router
+- **Third-party libraries (from the Expo docs sidebar):** @shopify/react-native-skia (drawing the sky), react-native-reanimated (running it on the UI thread), react-native-svg, @react-native-async-storage/async-storage, react-native-safe-area-context
+- **Native-only features:** reading the compass and accelerometer to know where the phone points, GPS, haptics, push and scheduled notifications, keeping the screen awake, the share sheet
 
 ## Setup
 

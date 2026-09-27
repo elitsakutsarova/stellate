@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Animated, BackHandler, PanResponder, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS } from "@/lib/theme";
@@ -37,8 +37,9 @@ export function BottomSheet({ open, onClose, children, background = COLORS.night
         return () => sub.remove();
     }, [open]);
 
-    // only takes over once the finger clearly moves down, so taps still work
-    const swipe = useMemo(() => PanResponder.create({
+    // Only takes over once the finger clearly moves down, so taps still work. Made once
+    // (useState's starting value) - it reads the latest onClose through the ref.
+    const [swipe] = useState(() => PanResponder.create({
         onMoveShouldSetPanResponder: (_, g) => g.dy > 6 && Math.abs(g.dy) > Math.abs(g.dx),
         onPanResponderMove: (_, g) => drag.setValue(Math.max(0, g.dy)),
         onPanResponderRelease: (_, g) => {
@@ -46,7 +47,7 @@ export function BottomSheet({ open, onClose, children, background = COLORS.night
             else Animated.spring(drag, { toValue: 0, useNativeDriver: false }).start();
         },
         onPanResponderTerminate: () => Animated.spring(drag, { toValue: 0, useNativeDriver: false }).start(),
-    }), [drag]);
+    }));
 
     const slide = progress.interpolate({ inputRange: [0, 1], outputRange: [height, 0] });
 

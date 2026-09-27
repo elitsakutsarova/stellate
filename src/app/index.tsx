@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Alert, Animated, BackHandler, Easing, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { Redirect } from "expo-router";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 import type { RealtimeChannel } from "@supabase/supabase-js";
@@ -44,7 +44,6 @@ const PANEL = {
 // steps. The panel's height comes from its (measured) content, so it never scrolls;
 // the art scales to fill the space left above it.
 export default function Index() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width, height } = useSafeAreaFrame();
   const launchDone = useLaunch((state) => state.done);
@@ -105,10 +104,6 @@ export default function Index() {
   const artScale = Math.min(width / FRAME.width, space("welcome") / ART_HEIGHT);
   const artY = (s: Step) => (logoBottom + panelTop(s)) / 2;
 
-  useEffect(() => {
-    if (isHydrated && pairId) router.replace("/sky");
-  }, [isHydrated, pairId, router]);
-
   // wait for the launch screen to go, so this isn't played hidden
   useEffect(() => {
     if (!launchDone || !isHydrated || pairId) return;
@@ -141,8 +136,7 @@ export default function Index() {
     // stop listening first, or its cleanup could remove the sky screen's channel
     if (waitChannel.current) await supabase.removeChannel(waitChannel.current);
     waitChannel.current = null;
-    await setPair(pair.id, pair.code);
-    router.replace("/sky");
+    await setPair(pair.id, pair.code); // with a pair in the store, this screen redirects to the sky
   };
 
   // go to the sky by yourself as soon as your special someone joins
@@ -189,7 +183,9 @@ export default function Index() {
     setBusy(null);
   };
 
-  if (!isHydrated || pairId) return <View style={{ flex: 1, backgroundColor: COLORS.night }} />;
+  // Navigation follows the store: with a pair, the sky is home.
+  if (pairId) return <Redirect href="/sky" />;
+  if (!isHydrated) return <View style={{ flex: 1, backgroundColor: COLORS.night }} />;
 
   const connectProps = { joinCode, setJoinCode, busy, onCreate: handleCreate, onJoin: handleJoin };
 

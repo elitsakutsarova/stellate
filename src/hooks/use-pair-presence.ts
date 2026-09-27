@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
-import { useRouter } from "expo-router";
 import { Alert, AppState } from "react-native";
 import * as Crypto from "expo-crypto";
 import { closeOldPairChannel, supabase } from "@/lib/supabase";
@@ -18,8 +17,7 @@ type PresencePayload = { online: boolean; looking: Looking };
 // Loads the pair through the server (the app can't read the table directly) and
 // keeps it live over one Realtime channel: presence (online + looking) and the
 // server's "pair-changed" broadcasts.
-export function usePairPresence(isHydrated: boolean, deviceId: string | null, pairId: string | null) {
-    const router = useRouter();
+export function usePairPresence(deviceId: string | null, pairId: string | null) {
     const [pair, setPair] = useState<PairStatus | null>(null);
     const [partnerOnline, setPartnerOnline] = useState(false);
     const [partnerLooking, setPartnerLooking] = useState<Looking>(null);
@@ -31,8 +29,7 @@ export function usePairPresence(isHydrated: boolean, deviceId: string | null, pa
     const lookingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
     useEffect(() => {
-        if (!isHydrated) return;
-        if (!deviceId || !pairId) { router.replace("/"); return; }
+        if (!deviceId || !pairId) return;
 
         let cancelled = false;
         // a random key, not deviceId: presence keys are visible to the other phone, and
@@ -52,10 +49,9 @@ export function usePairPresence(isHydrated: boolean, deviceId: string | null, pa
             } catch (err: any) {
                 if (cancelled) return;
                 if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
-                    // the pair is gone - forget it first, or the home screen sends us straight back
+                    // the pair is gone - forgetting it sends the sky screen back home
                     await clearPair();
                     Alert.alert("Couldn't load your connection", err.message);
-                    router.replace("/");
                     return;
                 }
                 // temporary (no connection, server down) - keep retrying here
@@ -114,17 +110,17 @@ export function usePairPresence(isHydrated: boolean, deviceId: string | null, pa
             channelRef.current = null;
             if (channel) supabase.removeChannel(channel);
         };
-    }, [isHydrated, deviceId, pairId, clearPair]);
+    }, [deviceId, pairId, clearPair]);
 
     // Only sends a value that stays the same for LOOKING_DELAY_MS.
-    const setLooking = useCallback((looking: Looking) => {
+    const setLooking = (looking: Looking) => {
         clearTimeout(lookingTimer.current);
         lookingTimer.current = setTimeout(() => {
             if (looking === lookingRef.current) return; // nothing new to tell
             lookingRef.current = looking;
             channelRef.current?.track({ online: true, looking });
         }, LOOKING_DELAY_MS);
-    }, []);
+    };
 
     return {
         pair,

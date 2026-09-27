@@ -37,8 +37,16 @@ export function SkyViewfinder({ bodies, active, basis, declination, onLookingCha
     const hintSize = 12 * Math.max(1, fitScale(width, height));
     const hintLine = Math.round(hintSize * 1.4);
 
-    const [lookingAt, setLookingAt] = useState<Looking>(null);
     const [anythingInView, setAnythingInView] = useState(false);
+
+    // Found (or lost) the sun/moon: a tap, and tell the screen. Called straight from the
+    // UI thread below, only when the answer changes - no state or effect in between.
+    const handleLooking = (looking: Looking) => {
+        if (looking) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        onLookingChange(looking);
+    };
+    // what was last reported; a shared value survives the reaction below being re-created
+    const reported = useSharedValue<Looking | undefined>(undefined);
 
     useAnimatedReaction(
         () => {
@@ -63,32 +71,28 @@ export function SkyViewfinder({ bodies, active, basis, declination, onLookingCha
             return { looking, inView };
         },
         (now, before) => {
-            if (now.looking !== before?.looking) scheduleOnRN(setLookingAt, now.looking);
+            if (now.looking !== reported.value) {
+                reported.value = now.looking;
+                scheduleOnRN(handleLooking, now.looking);
+            }
             if (now.inView !== before?.inView) scheduleOnRN(setAnythingInView, now.inView);
         },
-        [bodies, declination, width, height]
+        [bodies, declination, width, height, handleLooking]
     );
 
+    // The arrow eases towards the edge point that points at the active body. The frame
+    // loop below runs on the UI thread, so it reads what to aim at from a shared value,
+    // kept in step with the props here (handing React data to the UI thread).
+    const aim = useSharedValue<{ bearing: number; altitude: number; declination: number } | null>(null);
     useEffect(() => {
-        if (lookingAt) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        onLookingChange(lookingAt);
-    }, [lookingAt, onLookingChange]);
-
-    // the arrow eases towards the edge point that points at the active body
-    const target = useSharedValue<{ bearing: number; altitude: number } | null>(null);
-    useEffect(() => {
-        target.value = active ? { bearing: active.bearing, altitude: active.altitude } : null;
-    }, [active?.bearing, active?.altitude, target]);
+        aim.value = active ? { bearing: active.bearing, altitude: active.altitude, declination } : null;
+    }, [active?.bearing, active?.altitude, declination, aim]);
     const arrow = useSharedValue({ x: 0, y: 0, deg: 0, placed: false });
-    const declinationValue = useSharedValue(declination);
-    useEffect(() => {
-        declinationValue.value = declination;
-    }, [declination, declinationValue]);
 
     useFrameCallback(() => {
-        const t = target.value;
+        const t = aim.value;
         if (!t) return;
-        const p = projector(basis.value, declinationValue.value, width, height)(t.bearing, t.altitude);
+        const p = projector(basis.value, t.declination, width, height)(t.bearing, t.altitude);
         const a = arrow.value;
         if (!a.placed) {
             arrow.value = { x: p.arrowX, y: p.arrowY, deg: p.arrowDeg, placed: true };

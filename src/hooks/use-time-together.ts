@@ -1,37 +1,16 @@
-import { useEffect, useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { timeTogetherKey } from "@/lib/constants";
+import { useEffect } from "react";
+import { usePairStore } from "@/store/use-pair-store";
 
-export function useTimeTogether(pairId: string | null, together: boolean) {
-    // remembers which pair the count belongs to, so it's never saved under another
-    const [count, setCount] = useState<{ pairId: string; seconds: number } | null>(null);
-    const loaded = !!pairId && count?.pairId === pairId;
-
+// Counts a second every second while you're both looking up. The count itself lives in
+// the pair store (loaded with the pair, saved on every tick); this is only the clock.
+export function useTimeTogether(together: boolean) {
+    const addSecond = usePairStore((state) => state.addSecondTogether);
     useEffect(() => {
-        if (!pairId) return;
-        let cancelled = false;
-        AsyncStorage.getItem(timeTogetherKey(pairId))
-            .catch(() => null) // unreadable: count from 0 rather than not at all
-            .then((saved) => {
-                if (!cancelled) setCount({ pairId, seconds: Number(saved) || 0 });
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, [pairId]);
-
-    useEffect(() => {
-        if (!together || !loaded) return;
-        const timer = setInterval(() => setCount((c) => c && { ...c, seconds: c.seconds + 1 }), 1000);
+        if (!together) return;
+        const timer = setInterval(addSecond, 1000);
         return () => clearInterval(timer);
-    }, [together, loaded]);
-
-    // saved on every tick, so closing the app loses nothing
-    useEffect(() => {
-        if (count) AsyncStorage.setItem(timeTogetherKey(count.pairId), String(count.seconds)).catch(() => {});
-    }, [count]);
-
-    return loaded ? count.seconds : 0;
+    }, [together, addSecond]);
+    return usePairStore((state) => state.secondsTogether);
 }
 
 // 45 s, 4 min 07 s, 1 h 12 min
