@@ -23,10 +23,9 @@ export function NightBackground({ glowY = 0.35 }: { glowY?: number }) {
     );
 }
 
-// like max-width in CSS, so text stays a readable block on tablets
 export const MAX_TEXT_WIDTH = 440;
 
-// No orphans: glue the last two words, and ask each platform for balanced line breaks.
+// No orphans at end of text (i.e. glue the last two words, and ask each platform for balanced line breaks.
 const noOrphan = (text: string) => text.replace(/ (\S+)$/, "\u00A0$1");
 const tidy = (children: ReactNode) => (typeof children === "string" ? noOrphan(children) : children);
 const pretty = { textBreakStrategy: "balanced", lineBreakStrategyIOS: "push-out" } as const;
@@ -86,7 +85,6 @@ export function Button({ label, onPress, variant = "primary", busy, disabled, st
     );
 }
 
-// `satisfies`, not a type annotation, so it also fits text inputs
 export const glass = {
     backgroundColor: COLORS.glass,
     borderWidth: 1,
@@ -107,7 +105,6 @@ export function Pill({ children }: { children: ReactNode }) {
     );
 }
 
-// A softly pulsing dot next to a line of text, for waiting moments.
 export function WaitingLine({ children }: { children: ReactNode }) {
     const pulse = useRef(new Animated.Value(0.3)).current;
     useEffect(() => {

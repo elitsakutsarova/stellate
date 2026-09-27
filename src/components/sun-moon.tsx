@@ -5,7 +5,6 @@ import { Moon, MOON_SIZE, Sun, SUN_SIZE } from "@/components/art";
 type Pose = { x: number; y: number; rotate: number; scale: number };
 export type Arrangement = { moon: Pose; sun: Pose };
 
-// measured from the Figma frames (393 pt wide)
 export const ARRANGEMENTS = {
     loadingStart: {
         moon: { x: 0, y: -145, rotate: 90, scale: 1.53 },
@@ -26,7 +25,6 @@ export const ARRANGEMENTS = {
 } satisfies Record<string, Arrangement>;
 
 
-// The line-art sun and moon, animating through `steps` as progress goes 0, 1, 2...
 export function SunMoon({ steps, progress, color, scale: k, opacity }: {
     steps: Arrangement[];
     progress: Animated.Value;
@@ -35,7 +33,6 @@ export function SunMoon({ steps, progress, color, scale: k, opacity }: {
     opacity?: Animated.Value; // e.g. to fade them in
 }) {
     const inputRange = steps.map((_, i) => i);
-    // drawn at the largest size needed and only scaled down, so lines stay crisp
     const DRAW_SCALE = Math.max(...steps.flatMap((a) => [a.moon.scale, a.sun.scale])) * k;
 
     const animatedPose = (poses: Pose[]) => {

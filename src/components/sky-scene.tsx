@@ -18,12 +18,10 @@ import { Clouds, IN_FRONT_DEG, ShootingStars, Stars, type SkyView } from "@/comp
 
 type Props = {
     bodies: SkyBody[];
-    sunAltitude: number; // sets the sky's colours and the stars (can be a debug value)
-    basis: SharedValue<Basis>; // where the phone points, straight from the sensors
+    sunAltitude: number;
+    basis: SharedValue<Basis>;
     declination: number;
-    // which way (compass bearing) your special someone is, and how far; null = unknown
     partner: { bearing: number; km: number } | null;
-    // the sun/moon the line from their light goes to; together = you're both looking
     link: { to: SkyBody["name"]; together: boolean } | null;
 };
 
@@ -35,19 +33,17 @@ const CARDINALS = [
 ];
 
 const COLORS = {
-    groundFar: "#05060F", // deep below the horizon (just below it follows the time of day)
+    groundFar: "#05060F",
     label: "#C8CEF5",
     grid: "#A9B4FF",
     moonLit: "#F5F3EE",
-    moonDark: "#0A0F2C", // the unlit part: a faint disc against the sky
+    moonDark: "#0A0F2C",
 };
 
-// also used by the "found it" flash
 export const BODY_COLORS = { sun: "#FFD27A", moon: "#DDE3FF" } as const;
 
 const GRID_OPACITY = 0.08;
 
-// Grid: a line every 30 degrees of bearing, plus circles at 30 and 60 degrees altitude.
 const range = (from: number, to: number, step: number) =>
     Array.from({ length: Math.floor((to - from) / step) + 1 }, (_, i) => from + i * step);
 const GRID_LINES = [
@@ -57,24 +53,20 @@ const GRID_LINES = [
 
 // stars are fully out at nautical twilight (sun 12 degrees below the horizon)
 const FULL_NIGHT_SUN_ALTITUDE = -12;
-// shooting stars once the stars are mostly out
 const SHOOTING_STARS_FROM = 0.5;
 
 const SMOOTHING = 0.1;
 const GROUND_FADE_PX = 320;
 const SUN_GLOW = 56;
 const MOON_GLOW = 48;
-const MOON_RADIUS = 13; // the disc, inside its glow
+const MOON_RADIUS = 13;
 
 const distance = (a: Vec3, b: Vec3) => {
     "worklet";
     return Math.abs(a.x - b.x) + Math.abs(a.y - b.y) + Math.abs(a.z - b.z);
 };
 
-// Sensors update ~30 times a second; this eases towards them every frame, on the UI
-// thread, so the whole sky moves smoothly and together.
 function useSmoothedBasis(target: SharedValue<Basis>) {
-    // read once: Reanimated warns about reading shared values while re-rendering
     const [start] = useState(() => target.value);
     const smooth = useSharedValue(start);
     useFrameCallback(() => {
@@ -90,7 +82,6 @@ function useSmoothedBasis(target: SharedValue<Basis>) {
     return smooth;
 }
 
-// where a body is on screen, and whether it's in front of you
 function useBodyPosition(sky: SkyView, body: SkyBody) {
     const { basis, declination, width, height } = sky;
     return useDerivedValue(() => {
@@ -114,14 +105,11 @@ function Sun({ sky, body, scale }: { sky: SkyView; body: SkyBody; scale: number 
     );
 }
 
-// The moon as it really looks tonight: the lit part is half the disc plus or minus half
-// an ellipse (the terminator), turned so the lit side faces the sun.
 function Moon({ sky, body, phase, scale }: { sky: SkyView; body: SkyBody; phase: MoonPhase; scale: number }) {
     const { basis, declination, width, height } = sky;
     const r = MOON_RADIUS * scale;
-    const terminator = r * Math.abs(1 - 2 * phase.fraction); // 0 at half moon
+    const terminator = r * Math.abs(1 - 2 * phase.fraction);
     const bulge = phase.fraction < 0.5 ? 0 : 1; // crescent: towards the lit side; gibbous: away
-    // drawn with the lit side to the right, then turned
     const lit = Skia.Path.MakeFromSVGString(`M0,${-r}A${r},${r} 0 0,1 0,${r}A${terminator},${r} 0 0,${bulge} 0,${-r}Z`);
 
     const placement = useDerivedValue(() => {
@@ -140,7 +128,6 @@ function Moon({ sky, body, phase, scale }: { sky: SkyView; body: SkyBody; phase:
     const glow = MOON_GLOW * scale;
     return (
         <Group transform={transform} opacity={opacity}>
-            {/* dimmer glow when less of it is lit */}
             <Circle cx={0} cy={0} r={glow} opacity={0.3 + 0.7 * phase.fraction}>
                 <RadialGradient
                     c={vec(0, 0)} r={glow} positions={[0.2, 0.45, 1]}
@@ -153,7 +140,6 @@ function Moon({ sky, body, phase, scale }: { sky: SkyView; body: SkyBody; phase:
     );
 }
 
-// below the horizon: a faint dashed outline through the ground shows where it is
 function BelowHorizonRing({ sky, body, scale }: { sky: SkyView; body: SkyBody; scale: number }) {
     const position = useBodyPosition(sky, body);
     const c = useDerivedValue(() => position.value.c);
@@ -180,9 +166,7 @@ function Cardinal({ sky, label, bearing, font, color, scale }: {
     return <Text x={x} y={y} text={label} font={font} color={color} opacity={opacity} />;
 }
 
-// A soft, breathing pink light just above your horizon, in the direction of your special
-// someone - "they're over there, under the same sky" - with how far away they are.
-const MARKER_ALTITUDE = 3; // degrees above the horizon
+const MARKER_ALTITUDE = 3;
 const MARKER_BREATH_MS = 1800;
 
 function PartnerMarker({ sky, bearing, km, font, scale }: {
@@ -202,7 +186,6 @@ function PartnerMarker({ sky, bearing, km, font, scale }: {
         breath.value = withRepeat(withSequence(withTiming(1, ease), withTiming(0.5, ease)), -1);
     }, [breath]);
 
-    // two short lines above the light, centred on it
     const name = "your special someone";
     const distance = formatDistance(km);
     const nameHalf = font ? font.measureText(name).width / 2 : 0;
@@ -229,42 +212,34 @@ function PartnerMarker({ sky, bearing, km, font, scale }: {
     );
 }
 
-// Their gaze: a soft pink line from their light on your horizon, across the sky to the
-// edge of the sun/moon's glow. It grows out from its middle when it appears and shrinks
-// back into it when it goes. While you're both looking it brightens, and a small light travels along it.
-// Drawn after the ground: the part below your horizon stays faintly visible.
-const LINK_STEPS = 48;           // points along the line
+const LINK_STEPS = 48;
 const LINK_OPACITY = { alone: 0.3, together: 0.65 };
-const LINK_UNDERGROUND = 0.35;   // how visible the part below the horizon is, compared to above
+const LINK_UNDERGROUND = 0.35;
 const LINK_FADE_MS = 800;
 const LINK_GROW_MS = 1800;
 const LINK_SHRINK_MS = 1100;
-const LINK_STOP_SHORT = 0.6;   // ends this share of the body's glow radius away from its centre
-const LINK_TRAVEL_MS = 2600;     // one trip of the travelling light
+const LINK_STOP_SHORT = 0.6;
+const LINK_TRAVEL_MS = 2600;
 
 function PartnerLink({ sky, from, to, together, ground, scale }: {
     sky: SkyView;
     from: SkyPoint;
-    to: (SkyPoint & { glow: number }) | null; // null = no line (shrinks away); glow = its radius, px
+    to: (SkyPoint & { glow: number }) | null;
     together: boolean;
-    ground: SharedValue<SkPath>; // the ground's outline, to tell above from below the horizon
+    ground: SharedValue<SkPath>;
     scale: number;
 }) {
     const { basis, declination, width, height } = sky;
-    // keeps the last target while shrinking away (updated during render - React's way to
-    // follow a prop in state, without an effect)
     const [target, setTarget] = useState(to);
     if (to && (to.bearing !== target?.bearing || to.altitude !== target?.altitude || to.glow !== target?.glow)) setTarget(to);
 
-    const grown = useSharedValue(0); // 0 = nothing, 1 = the whole line
+    const grown = useSharedValue(0);
     useEffect(() => {
         grown.value = withTiming(to ? 1 : 0, { duration: to ? LINK_GROW_MS : LINK_SHRINK_MS, easing: Easing.inOut(Easing.cubic) });
     }, [!!to, grown]);
-    // from the middle out, both ways
     const start = useDerivedValue(() => 0.5 - grown.value / 2);
     const end = useDerivedValue(() => 0.5 + grown.value / 2);
 
-    // where along the path to stop: at the edge of the body's glow, not its centre
     const pxPerDegree = (focalPx(height) * Math.PI) / 180;
     const stopShortDeg = target ? (target.glow * LINK_STOP_SHORT) / pxPerDegree : 0;
     const reach = (a: SkyPoint, b: SkyPoint) => {
@@ -281,7 +256,6 @@ function PartnerLink({ sky, from, to, together, ground, scale }: {
         for (let i = 0; i <= LINK_STEPS; i++) {
             const q = pointAlong(from, target, (i / LINK_STEPS) * last);
             const s = at(q.bearing, q.altitude);
-            // split where it goes behind you, like the grid
             if (s.angleFromCenter >= IN_FRONT_DEG) drawing = false;
             else if (drawing) p.lineTo(s.x, s.y);
             else {
@@ -314,7 +288,6 @@ function PartnerLink({ sky, from, to, together, ground, scale }: {
         const t = travel.value;
         const q = pointAlong(from, target, t * reach(from, target));
         const s = projector(basis.value, declination, width, height)(q.bearing, q.altitude);
-        // only once the line has fully grown; fades in leaving them, out arriving
         const shown = travelling && grown.value === 1 && s.angleFromCenter < IN_FRONT_DEG ? Math.sin(Math.PI * t) : 0;
         return { c: vec(s.x, s.y), opacity: shown };
     }, [declination, width, height, from, target, travelling, stopShortDeg]);
@@ -329,14 +302,12 @@ function PartnerLink({ sky, from, to, together, ground, scale }: {
     );
     return (
         <>
-            {/* above the horizon */}
             <Group clip={ground} invertClip>
                 {line(opacity)}
                 <Circle c={sparkC} r={3 * scale} color="#FFF4F7" opacity={sparkOpacity}>
                     <BlurMask blur={3 * scale} style="solid" />
                 </Circle>
             </Group>
-            {/* below it, faintly */}
             <Group clip={ground}>{line(underground)}</Group>
         </>
     );
@@ -345,8 +316,6 @@ function PartnerLink({ sky, from, to, together, ground, scale }: {
 export function SkyScene({ bodies, sunAltitude, basis, declination, partner, link }: Props) {
     const palette = skyColors(sunAltitude);
     const { width, height } = useSafeAreaFrame();
-    // The sky always shows the same degrees top to bottom, so on a taller screen (tablet)
-    // it's bigger; fixed-size things (stars, glows, letters) grow with it.
     const k = Math.max(1, height / FRAME.height);
     const smooth = useSmoothedBasis(basis);
     const sky: SkyView = { basis: smooth, declination, width, height };
@@ -355,7 +324,6 @@ export function SkyScene({ bodies, sunAltitude, basis, declination, partner, lin
 
     const shape = useDerivedValue(() => groundPolygon(smooth.value.U, width, height), [width, height]);
 
-    // the sky gradient is anchored to the real horizon, not the screen
     const skyStart = useDerivedValue(() => vec(shape.value.horizonPoint.x, shape.value.horizonPoint.y));
     const skyEnd = useDerivedValue(() => vec(shape.value.skyHigh.x, shape.value.skyHigh.y));
 
@@ -369,7 +337,6 @@ export function SkyScene({ bodies, sunAltitude, basis, declination, partner, lin
         }
         return p;
     });
-    // the ground fades from the horizon down
     const groundFade = useDerivedValue(() => {
         const { horizon, groundDir } = shape.value;
         const from = horizon.length === 2
@@ -387,8 +354,6 @@ export function SkyScene({ bodies, sunAltitude, basis, declination, partner, lin
         return p;
     });
 
-    // the whole grid as one path; points behind you would flip across the screen, so
-    // lines are split there
     const grid = useDerivedValue(() => {
         const at = projector(smooth.value, declination, width, height);
         const p = Skia.Path.Make();
@@ -411,7 +376,6 @@ export function SkyScene({ bodies, sunAltitude, basis, declination, partner, lin
     const linkBody = link ? bodies.find((b) => b.name === link.to) : undefined;
 
     return (
-        // full screen, so the sky maths match the screen
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
             <Canvas style={StyleSheet.absoluteFill}>
                 <Rect x={0} y={0} width={width} height={height}>
@@ -426,10 +390,8 @@ export function SkyScene({ bodies, sunAltitude, basis, declination, partner, lin
 
                 <Path path={grid} style="stroke" strokeWidth={1} color={COLORS.grid} opacity={GRID_OPACITY} />
 
-                {/* in front of the grid, behind the sun/moon */}
                 <Clouds sky={sky} color={palette.cloud} opacity={palette.cloudOpacity} bodies={bodies} />
 
-                {/* drawn before the ground, so a setting sun/moon sinks behind it */}
                 {bodies.map((body) => body.phase
                     ? <Moon key={body.name} sky={sky} body={body} phase={body.phase} scale={k} />
                     : <Sun key={body.name} sky={sky} body={body} scale={k} />)}

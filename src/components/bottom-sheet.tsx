@@ -8,12 +8,11 @@ const SLIDE_MS = 280;
 const DISMISS_PX = 100;     // drag down further than this to close...
 const DISMISS_SPEED = 1;    // ...or flick down faster than this
 
-// Closes by swiping down, tapping outside, or Android's back button.
 export function BottomSheet({ open, onClose, children, background = COLORS.nightMid }: {
     open: boolean;
     onClose: () => void;
     children: ReactNode;
-    background?: string; // panel colour (defaults to the night theme)
+    background?: string; 
 }) {
     const { height } = useSafeAreaFrame();
     const insets = useSafeAreaInsets();
@@ -22,7 +21,6 @@ export function BottomSheet({ open, onClose, children, background = COLORS.night
     const onCloseRef = useRef(onClose);
     onCloseRef.current = onClose;
 
-    // JS driver: the drag is added to this, and both must run on the same side
     useEffect(() => {
         if (open) drag.setValue(0);
         Animated.timing(progress, { toValue: open ? 1 : 0, duration: SLIDE_MS, useNativeDriver: false }).start();
@@ -37,8 +35,7 @@ export function BottomSheet({ open, onClose, children, background = COLORS.night
         return () => sub.remove();
     }, [open]);
 
-    // Only takes over once the finger clearly moves down, so taps still work. Made once
-    // (useState's starting value) - it reads the latest onClose through the ref.
+    // only takes over once the finger clearly moves down, so taps still work
     const [swipe] = useState(() => PanResponder.create({
         onMoveShouldSetPanResponder: (_, g) => g.dy > 6 && Math.abs(g.dy) > Math.abs(g.dx),
         onPanResponderMove: (_, g) => drag.setValue(Math.max(0, g.dy)),

@@ -7,20 +7,16 @@ const SLIDE_MS = 250;
 const MENU_WIDTH = 0.8;      // fraction of the screen width...
 const MENU_MAX_WIDTH = 360;  // ...but never wider than this (tablets)
 
-
-// ☰ size on a phone; grows on bigger screens
 export function menuIcon(width: number, height: number) {
     const s = Math.max(1, fitScale(width, height));
     const line = 22 * s, thick = 2 * s, gap = 7 * s, top = 12 * s;
     return {
         line, thick, gap, top,
         height: gap * 2 + thick,
-        // vertical middle, so the viewfinder's hint can line up with it
         center: top + gap + thick / 2,
     };
 }
 
-// a very faint line between sections
 export function MenuDivider() {
     return <View style={{ height: 1, backgroundColor: "rgba(255, 255, 255, 0.07)" }} />;
 }
@@ -33,14 +29,12 @@ export function MenuHeading({ children, color = COLORS.muted }: { children: Reac
     );
 }
 
-// The whole row is the button; the switch only shows the state, so it can't
-// flip on and back while a permission popup is still open.
 export function MenuToggle({ label, value, onChange, disabled, accent = COLORS.accent }: {
     label: string;
     value: boolean;
     onChange: (on: boolean) => void;
     disabled?: boolean;
-    accent?: string; // the switch's "on" colour
+    accent?: string;
 }) {
     return (
         <Pressable
@@ -66,17 +60,15 @@ type Props = {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     children: ReactNode;
-    background?: string; // panel colour (defaults to the night theme)
+    background?: string;
 };
 
-// A panel sliding in from the left, and the ☰ button that turns into an X with it.
-// Children: the first sits at the top, the last at the bottom.
 export function SideMenu({ open, onOpenChange, children, background = COLORS.nightMid }: Props) {
     const { width, height } = useSafeAreaFrame();
     const icon = menuIcon(width, height);
     const insets = useSafeAreaInsets();
     const menuWidth = Math.min(width * MENU_WIDTH, MENU_MAX_WIDTH);
-    const progress = useRef(new Animated.Value(0)).current; // 0 closed, 1 open
+    const progress = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
         Animated.timing(progress, { toValue: open ? 1 : 0, duration: SLIDE_MS, useNativeDriver: true }).start();

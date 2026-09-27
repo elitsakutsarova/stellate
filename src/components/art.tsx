@@ -1,8 +1,5 @@
 import Svg, { Circle, ClipPath, Defs, G, Line, Path, Rect } from "react-native-svg";
 
-// The artwork from assets/images/*.svg as components, so their colour follows the theme.
-
-// same line thickness at any size
 const stroke = (viewBoxWidth: number, width: number, px = 1.2) => (px * viewBoxWidth) / width;
 
 const LOGO_PATHS = [
@@ -40,7 +37,6 @@ export function Moon({ width, color }: { width: number; color: string }) {
     );
 }
 
-// Half a sun - the circle's centre sits on the left edge, as in the original file.
 export const SUN_SIZE = { width: 139, height: 278 };
 
 export function Sun({ width, color }: { width: number; color: string }) {
@@ -87,7 +83,6 @@ export function ShareIcon({ size = 24, color }: { size?: number; color: string }
     );
 }
 
-// The paper plane's outline without its middle line, pointing up.
 export function ArrowIcon({ size = 28, color }: { size?: number; color: string }) {
     return (
         <Svg width={size} height={size} viewBox="-2 -3 28 28" fill="none">

@@ -12,7 +12,6 @@ export type SkyBody = Body & { name: "sun" | "moon" };
 // Degrees of sky shown top to bottom. x and y share one scale, so the sky isn't stretched.
 const FOV_VERTICAL = 70;
 
-// "worklet" (here and below): these also run on the UI thread, where the sky is drawn.
 export const focalPx = (height: number) => {
     "worklet";
     return height / 2 / Math.tan((FOV_VERTICAL / 2) * (Math.PI / 180));
@@ -25,7 +24,6 @@ function targetVector(azimuthDeg: number, altitudeDeg: number): Vec3 {
     return { x: Math.sin(az) * Math.cos(alt), y: Math.cos(az) * Math.cos(alt), z: Math.sin(alt) };
 }
 
-// degrees across the sky between two spots
 export function degreesApart(a: SkyPoint, b: SkyPoint) {
     "worklet";
     const u = targetVector(a.bearing, a.altitude);
@@ -116,7 +114,6 @@ function projectToScreen(
     };
 }
 
-// projectToScreen with the phone's attitude and the screen filled in
 export function projector(basis: Basis, declination: number, width: number, height: number) {
     "worklet";
     return (bearing: number, altitude: number) =>
@@ -133,7 +130,6 @@ export function groundPolygon(U: Vec3, width: number, height: number) {
     const aboveHorizon = (x: number, y: number) =>
         (up.x * (x - width / 2)) / kx - (up.y * (y - height / 2)) / ky + up.z;
 
-    // Clip the screen rectangle against the horizon line.
     const corners = [[0, 0], [width, 0], [width, height], [0, height]];
     const ground: number[][] = [];
     const horizon: number[][] = [];

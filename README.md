@@ -35,20 +35,19 @@ create table pairs (
   device_b_active boolean not null default true
 );
 
--- rough locations (~10 km), for "moon is up for both of you" reminders
 alter table pairs
   add column lat_a double precision, add column lon_a double precision,
   add column lat_b double precision, add column lon_b double precision;
 
--- RLS on with no policies at all = the public key in the app can't read or
--- write this table. Only the server (secret service role key) can.
 alter table pairs enable row level security;
 ```
 
 Live updates don't come from the table: the server sends a small "pair-changed" message over a Supabase Realtime channel whenever a pair changes, and the app then asks the server for its new status.
 
-3. Copy `.env.example` to `.env` (root folder) and fill in your Supabase project's url + public key
+3. Copy `.env.example` to `.env` (root folder) and fill in your Supabase project's url + public key (`EXPO_PUBLIC_API_URL` is for non-development builds)
 4. Copy `server/.env.example` to `server/.env` and fill in the same url + the service role key (a different, secret one - don't share this file with anyone)
-5. Run `npm run server` in one terminal, `npm start` in another
+5. For push notifications, add your Firebase `google-services.json` to the root folder
+6. Make a development build and install it on your phone - Expo Go on Android doesn't support push notifications: `npx expo run:android`, or `eas build --profile development --platform android`
+7. Run `npm run server` in one terminal, `npm start` in another, and open the app from the development build
 
-The app finds my computer automatically while developing, no need to type in an IP address. That only works while the phone is on the same wifi though - for it to actually work between two people far apart, the server would need to be hosted somewhere real instead of just running on a laptop.
+Note: server is not hosted anywhere so app doesn't work when devices are on different networks

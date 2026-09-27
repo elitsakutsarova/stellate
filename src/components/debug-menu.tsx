@@ -4,7 +4,6 @@ import { Pill } from "@/components/ui";
 
 export type DebugItem = { label: string; onPress: () => void };
 
-// Development-only tools, tucked behind one small button so they don't cover the sky.
 export function DebugMenu({ items, top }: { items: DebugItem[]; top: number }) {
     const [open, setOpen] = useState(false);
     if (!__DEV__) return null;

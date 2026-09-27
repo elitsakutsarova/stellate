@@ -11,7 +11,7 @@ export function CodeRow({ code, size = 26, accent = COLORS.accent }: { code: str
         try {
             await Clipboard.setStringAsync(code);
         } catch {
-            return; // nothing copied, so don't say it was
+            return; // nothing copied
         }
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);

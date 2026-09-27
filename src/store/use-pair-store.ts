@@ -9,17 +9,16 @@ type PairStore = {
     pairCode: string | null;
     isHydrated: boolean;
     notifications: Record<NotificationKind, boolean | null>;
-    secondsTogether: number;        // time you've both looked up at once, for this pair
+    secondsTogether: number;
     hydrate: () => Promise<void>;   // load deviceId + saved pair from AsyncStorage, once
     setPair: (id: string, code: string) => Promise<void>; // save + persist
     clearPair: () => Promise<void>; // disconnect
     setNotification: (kind: NotificationKind, on: boolean) => Promise<void>; // save + persist
-    addSecondTogether: () => void;  // +1 and persist (called every second while together)
+    addSecondTogether: () => void;
 };
 
 const save = (work: Promise<unknown>) => work.catch((err) => console.warn("Couldn't save:", err));
 
-// saved per pair, so reconnecting with the same code keeps your time
 const loadSecondsTogether = async (pairId: string) =>
     Number(await AsyncStorage.getItem(timeTogetherKey(pairId)).catch(() => null)) || 0;
 
@@ -54,13 +53,12 @@ export const usePairStore = create<PairStore>((set, get) => ({
         }
     },
 
-    // The app updates straight away; saving is best-effort, so a storage hiccup can't
-    // block connecting, disconnecting or a toggle.
+    // state first, saving is best-effort - a storage error can't block the app
     setPair: async (id, code) => {
         set({ pairId: id, pairCode: code, secondsTogether: 0 });
         await save(AsyncStorage.multiSet([[PAIR_ID_KEY, id], [PAIR_CODE_KEY, code]]));
         const seconds = await loadSecondsTogether(id);
-        if (get().pairId === id) set({ secondsTogether: seconds }); // still the same pair
+        if (get().pairId === id) set({ secondsTogether: seconds });
     },
 
     clearPair: async () => {

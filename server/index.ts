@@ -2,7 +2,6 @@ import path from "node:path";
 import { randomInt } from "node:crypto";
 import dotenv from "dotenv";
 
-// relative to this file, so `npm run server` works from any folder
 dotenv.config({ path: path.join(__dirname, ".env") });
 
 import express from "express";
@@ -20,8 +19,6 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     );
 }
 
-// The service role key bypasses Row Level Security - fine because it never leaves
-// the server. The checks in these routes take the place of RLS.
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const app = express();
@@ -38,7 +35,7 @@ app.use(
     })
 );
 
-// Stricter on join: it's the endpoint someone would use to brute-force guess codes.
+// Stricter on join - limited guesses
 const joinLimiter = rateLimit({
     windowMs: 60 * 1000,
     limit: 10,
@@ -51,18 +48,17 @@ app.get("/", (_req, res) => {
     res.json({ ok: true });
 });
 
-// Unclaimed codes expire, so they can't be guessed at forever.
+// Unclaimed codes expire
 const PAIR_EXPIRATION_MS = 24 * 60 * 60 * 1000;
 const isExpired = (createdAt: string) => Date.now() - new Date(createdAt).getTime() > PAIR_EXPIRATION_MS;
 
 const generateCode = () => {
-    // No look-alike characters (0/O, 1/I). randomInt, not Math.random: codes are secrets.
+    // No look-alike characters
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     return Array.from({ length: 6 }, () => chars[randomInt(chars.length)]).join("");
 };
 
-// Tells both phones "this pair changed". No data on purpose: the app re-fetches
-// through /status, which checks membership. Best-effort.
+// pair changed
 const announcePairChanged = async (pairId: string) => {
     const channel = supabase.channel(pairChannel(pairId));
     try {
@@ -75,7 +71,7 @@ const announcePairChanged = async (pairId: string) => {
     }
 };
 
-// Loads a pair and checks the caller is in it; sends the 404/403 itself and returns null.
+// loads a pair and checks the caller is in
 const findMyPair = async (id: string, deviceId: unknown, res: express.Response) => {
     if (typeof deviceId !== "string" || !deviceId) {
         res.status(400).json({ error: "deviceId is required" });
@@ -100,7 +96,7 @@ const createPair = async (req: express.Request, res: express.Response) => {
         return;
     }
 
-    // sweep this device's unjoined codes and any expired ones
+    // remove device's unjoined codes and any expired ones
     await supabase.from("pairs").delete().eq("device_a", deviceId).is("device_b", null);
     await supabase
         .from("pairs")
@@ -108,7 +104,7 @@ const createPair = async (req: express.Request, res: express.Response) => {
         .is("device_b", null)
         .lt("created_at", new Date(Date.now() - PAIR_EXPIRATION_MS).toISOString());
 
-    // retry on a code collision (unique violation, Postgres 23505)
+    // retry on a code collision 
     let data = null;
     let error = null;
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -182,7 +178,7 @@ const joinPair = async (req: express.Request, res: express.Response) => {
     res.status(409).json({ error: "That code is taken - it already connects two other people." });
 };
 
-// Never includes the partner's device id - it works like a password for these routes.
+// Never include the partner's device id
 const getStatus = async (req: express.Request, res: express.Response) => {
     const mine = await findMyPair(req.params.id as string, req.body?.deviceId, res);
     if (!mine) return;
@@ -197,7 +193,7 @@ const getStatus = async (req: express.Request, res: express.Response) => {
     });
 };
 
-// ~10 km. Rounded on the server, so a precise location is never stored.
+// ~10 km rounded on the server location (so never store percise one)
 const roughly = (degrees: number) => Math.round(degrees * 10) / 10;
 
 const setLocation = async (req: express.Request, res: express.Response) => {
@@ -217,7 +213,6 @@ const setLocation = async (req: express.Request, res: express.Response) => {
 
     const lat = roughly(latitude);
     const lon = roughly(longitude);
-    // only write and notify when it actually changed
     if ((amIA ? pair.lat_a : pair.lat_b) !== lat || (amIA ? pair.lon_a : pair.lon_b) !== lon) {
         const { error } = await supabase
             .from("pairs")
@@ -255,7 +250,6 @@ const setPresence = async (req: express.Request, res: express.Response) => {
 
 const isPushToken = (token: unknown) => typeof token === "string" && /^ExponentPushToken\[.+\]$/.test(token);
 
-// null = the "looks up" toggle is off. Never sent back out.
 const setPushTokenRoute = async (req: express.Request, res: express.Response) => {
     const { deviceId, token } = req.body ?? {};
     const id = req.params.id as string;
@@ -277,7 +271,6 @@ const setPushTokenRoute = async (req: express.Request, res: express.Response) =>
     res.json({ ok: true });
 };
 
-// If Expo says the token is dead (app uninstalled), forget it.
 const sendPush = async (pairId: string, column: "push_token_a" | "push_token_b", to: string, title: string, body: string) => {
     try {
         const response = await fetch("https://exp.host/--/api/v2/push/send", {
@@ -297,7 +290,6 @@ const sendPush = async (pairId: string, column: "push_token_a" | "push_token_b",
 };
 
 const LOOK_UP_PAUSE_MS = 30 * 60 * 1000;
-// When each phone last got a "looks up" push. In memory: a restart forgets it.
 const lastLookUpPush = new Map<string, number>();
 
 const lookingNow = async (req: express.Request, res: express.Response) => {

@@ -4,7 +4,6 @@ import type { SkyBody } from "@/hooks/use-sky-bodies";
 import type { DebugItem } from "@/components/debug-menu";
 import { SKY_PRESETS, type SkyPreset } from "@/lib/sky-colors";
 
-// times of day, moon phases and "look at" targets to cycle through (null = real)
 const SKIES: (SkyPreset | null)[] = [null, "day", "golden", "twilight", "night"];
 const PHASES = [
     null,
@@ -21,10 +20,7 @@ const TARGETS: Looking[] = [null, "sun", "moon"];
 
 const next = <T>(list: T[], current: T) => list[(list.indexOf(current) + 1) % list.length];
 
-// Development-only overrides for the sky screen: another time of day, another moon
-// phase, or pretend the phone points straight at the sun/moon. Takes the real bodies and
-// returns what to show, plus the items for the debug menu. In release builds (__DEV__
-// false) everything is passed through unchanged.
+// Development-only: cycles through times of day, moon phases and "look at" targets.
 export function useSkyDebug(realBodies: SkyBody[], realActive: SkyBody | null) {
     const [sky, setSky] = useState<SkyPreset | null>(null);
     const [phase, setPhase] = useState<(typeof PHASES)[number]>(null);
@@ -57,7 +53,7 @@ export function useSkyDebug(realBodies: SkyBody[], realActive: SkyBody | null) {
     return {
         bodies,
         active: shown ?? realActive,
-        sunAltitude: preset ? SKY_PRESETS[preset] : undefined, // replaces the real one when set
+        sunAltitude: preset ? SKY_PRESETS[preset] : undefined,
         lookAt: __DEV__ ? bodies.find((b) => b.name === target) ?? null : null,
         items,
     };

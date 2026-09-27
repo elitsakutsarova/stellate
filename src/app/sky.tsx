@@ -30,8 +30,8 @@ import { directionTo } from "@/lib/geo";
 import { skyColors } from "@/lib/sky-colors";
 
 const NIGHT_UNTIL_KNOWN = -20;
-const PARTNER_NEARBY_KM = 20; // closer than this, a direction means little
-const MAX_SKY_WAIT_MS = 4000; // show the sky anyway after this (e.g. a simulator has no sensors)
+const PARTNER_NEARBY_KM = 20;
+const MAX_SKY_WAIT_MS = 4000;
 const SKY_FADE_MS = 500;
 
 export default function Sky() {
@@ -41,15 +41,13 @@ export default function Sky() {
     const deviceId = usePairStore((state) => state.deviceId);
     const pairId = usePairStore((state) => state.pairId);
     const clearPair = usePairStore((state) => state.clearPair);
-    // pointing at the sky means not touching the screen - don't let the phone lock
     useKeepAwake();
 
     const { pair, partnerOnline, partnerLooking, partnerLeft, offline, setLooking } = usePairPresence(deviceId, pairId);
 
     const { coords, error: locationError, canAskAgain, retry } = useLocation();
 
-    // rough location (the server rounds it) for the other phone - syncing with the
-    // server is what effects are for
+    // rough location (the server rounds it) for the other phone
     useEffect(() => {
         if (!coords || !pairId || !deviceId) return;
         setLocation(pairId, deviceId, coords).catch(() => {});
@@ -59,8 +57,6 @@ export default function Sky() {
     useSkyReminders(notifications.reminders, coords, partnerLeft ? null : pair?.partnerLocation ?? null);
     const [menuOpen, setMenuOpen] = useState(false);
 
-    // The sheet opens for each new location problem (no effect needed: it's worked out
-    // from the error), until closed. It goes by itself once location works.
     const [closedError, setClosedError] = useState<string | null>(null);
     const locationSheet = !!locationError && closedError !== locationError;
     const closeLocationSheet = () => setClosedError(locationError);
@@ -71,7 +67,7 @@ export default function Sky() {
     };
 
     const real = useSkyBodies(coords);
-    const debug = useSkyDebug(real.bodies, real.active); // dev-only overrides, see the hook
+    const debug = useSkyDebug(real.bodies, real.active);
     const { bodies, active } = debug;
     const realSunAltitude = real.bodies.find((b) => b.name === "sun")?.altitude;
     const sunAltitude = useGlide(debug.sunAltitude ?? realSunAltitude) ?? NIGHT_UNTIL_KNOWN;
@@ -80,10 +76,7 @@ export default function Sky() {
     const sensors = useDeviceOrientation(!!coords, debug.lookAt);
     const { declination } = sensors;
 
-    // The sky waits for the sensors' first readings and the location (or its error), so
-    // it appears already in place instead of swinging there - or a few seconds at most.
-    // Once shown it stays (set during render, React's way to update state from other
-    // values without an extra effect).
+    // wait for the first sensor readings and the location, so sky appears already in place
     const [waitedTooLong, setWaitedTooLong] = useState(false);
     useEffect(() => {
         const timer = setTimeout(() => setWaitedTooLong(true), MAX_SKY_WAIT_MS);
@@ -92,7 +85,6 @@ export default function Sky() {
     const [skyReady, setSkyReady] = useState(false);
     if (!skyReady && (waitedTooLong || (sensors.ready && (!!coords || !!locationError)))) setSkyReady(true);
 
-    // the sky fades in over the "finding" message, which then goes
     const skyOpacity = useRef(new Animated.Value(0)).current;
     const [finding, setFinding] = useState(true);
     useEffect(() => {
@@ -100,7 +92,6 @@ export default function Sky() {
         Animated.timing(skyOpacity, { toValue: 1, duration: SKY_FADE_MS, useNativeDriver: true }).start(() => setFinding(false));
     }, [skyReady, skyOpacity]);
 
-    // which way your special someone is - not shown if they're right nearby
     const partnerLocation = partnerLeft ? null : pair?.partnerLocation;
     const partnerDirection = coords && partnerLocation ? directionTo(coords, partnerLocation) : null;
     const partner = partnerDirection && partnerDirection.km >= PARTNER_NEARBY_KM ? partnerDirection : null;
@@ -111,27 +102,22 @@ export default function Sky() {
         setLooking(looking);
     };
 
-    // both looking at the sky - the same body or not
     const together = !partnerLeft && !!myLooking && !!partnerLooking;
     const timeTogether = useTimeTogether(together);
 
-    // While they look up, a line joins their light to the sky: to what you're looking at,
-    // if you are (so together it lands on your sun/moon), otherwise to what they see.
     const link = partnerLooking ? { to: myLooking ?? partnerLooking, together } : null;
 
     useLookUpAlerts({ enabled: notifications.lookUp, pairId, deviceId, myLooking, partnerOnline });
 
-    // clearing the pair sends this screen home (see the Redirect below)
     const handleDisconnect = async () => {
         if (pair && deviceId) {
             try {
                 await setPresence(pair.id, deviceId, false);
             } catch (err: any) {
-                // leave locally even if the server can't be reached
                 console.warn("Couldn't update presence on disconnect:", err.message);
             }
         }
-        await cancelSkyReminders(); // no reminders about someone you've left
+        await cancelSkyReminders();
         await clearPair();
     };
 
@@ -145,11 +131,9 @@ export default function Sky() {
                 ? { text: "● Your special someone is here now", color: COLORS.online }
                 : { text: "○ Your special someone isn't in the app right now", color: COLORS.muted };
 
-    // Navigation follows the store: without a pair, home is the connect screen.
     if (!pairId) return <Redirect href="/" />;
 
     return (
-        // full screen (header hidden) so the sky maths match the screen
         <View style={{ flex: 1, backgroundColor: COLORS.night }}>
             <Stack.Screen options={{ headerShown: false }} />
             <StatusBar style="light" />
@@ -191,7 +175,6 @@ export default function Sky() {
                 ]}
             />
 
-            {/* status card */}
             <View
                 pointerEvents="box-none"
                 style={{ position: "absolute", left: 0, right: 0, bottom: insets.bottom + 20, paddingHorizontal: 24, alignItems: "center", zIndex: 2 }}
@@ -201,7 +184,7 @@ export default function Sky() {
                         maxWidth: MAX_TEXT_WIDTH * s, alignItems: "center", gap: 2 * s,
                         paddingVertical: 8 * s, paddingHorizontal: 16 * s,
                         borderRadius: together ? 20 * s : 999,
-                        backgroundColor: palette.card, // white glass at night, smoked glass by day
+                        backgroundColor: palette.card,
                         borderWidth: 1, borderColor: "rgba(255, 255, 255, 0.1)",
                     }}
                 >

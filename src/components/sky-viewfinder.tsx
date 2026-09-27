@@ -21,16 +21,13 @@ const GLOW_VISIBLE_PX = 24;
 const ARROW_EASE = 0.1;
 
 type Props = {
-    bodies: SkyBody[];       // both: you can look at either one
-    active: SkyBody | null;  // the one the arrow guides you to
+    bodies: SkyBody[];
+    active: SkyBody | null;
     basis: SharedValue<Basis>;
     declination: number;
     onLookingChange: (looking: Looking) => void;
 };
 
-// Guidance on top of the sky: an edge arrow to the main body when nothing is in
-// view, and a haptic tap when the sun or moon comes into view. The checks run on the
-// UI thread every frame; React only hears about it when the answer changes.
 export function SkyViewfinder({ bodies, active, basis, declination, onLookingChange }: Props) {
     const { width, height } = useSafeAreaFrame();
     const insets = useSafeAreaInsets();
@@ -39,13 +36,10 @@ export function SkyViewfinder({ bodies, active, basis, declination, onLookingCha
 
     const [anythingInView, setAnythingInView] = useState(false);
 
-    // Found (or lost) the sun/moon: a tap, and tell the screen. Called straight from the
-    // UI thread below, only when the answer changes - no state or effect in between.
     const handleLooking = (looking: Looking) => {
         if (looking) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         onLookingChange(looking);
     };
-    // what was last reported; a shared value survives the reaction below being re-created
     const reported = useSharedValue<Looking | undefined>(undefined);
 
     useAnimatedReaction(
@@ -80,9 +74,6 @@ export function SkyViewfinder({ bodies, active, basis, declination, onLookingCha
         [bodies, declination, width, height, handleLooking]
     );
 
-    // The arrow eases towards the edge point that points at the active body. The frame
-    // loop below runs on the UI thread, so it reads what to aim at from a shared value,
-    // kept in step with the props here (handing React data to the UI thread).
     const aim = useSharedValue<{ bearing: number; altitude: number; declination: number } | null>(null);
     useEffect(() => {
         aim.value = active ? { bearing: active.bearing, altitude: active.altitude, declination } : null;
@@ -117,12 +108,10 @@ export function SkyViewfinder({ bodies, active, basis, declination, onLookingCha
     if (!active || anythingInView) return null;
 
     return (
-        // full screen explicitly, so projection x/y match the screen
         <View
             pointerEvents="box-none"
             style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}
         >
-            {/* small on phones, growing on tablets; its middle lines up with the ☰ button's */}
             <Text
                 style={{
                     position: "absolute", alignSelf: "center",

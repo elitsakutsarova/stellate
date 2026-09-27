@@ -15,8 +15,6 @@ export function useLocation() {
     // once denied, the OS won't show the prompt again - only Settings can fix it
     const [canAskAgain, setCanAskAgain] = useState(true);
 
-    // Plain functions, no useCallback: they only use state setters (which never change),
-    // and the React Compiler (on in app.json) memoizes them anyway.
     const loadPosition = async () => {
         try {
             const lastKnown = await Location.getLastKnownPositionAsync();
@@ -60,8 +58,6 @@ export function useLocation() {
         await handlePermissionResult(status, canAsk);
     };
 
-    // Effects here only connect to the outside world (the OS), which is what effects
-    // are for. [] = once, when the screen opens.
     useEffect(() => {
         requestPermission();
     }, []);

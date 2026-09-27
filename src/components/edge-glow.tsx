@@ -10,9 +10,8 @@ const EDGE_PX = 14;        // how far a glow reaches in from each edge
 const TOGETHER_COLOR = "#F7B7C8";
 const FADE_MS = 1400;      // together glow fading in/out
 const PULSE_MS = 2200;     // half a breath: bright -> dim, then dim -> bright
-const HEARTBEAT_GAP_MS = 180; // lub... dub
-// three heartbeats (lub, dub), each softer, then quiet - felt, but never nagging
-const { Medium, Light, Soft } = Haptics.ImpactFeedbackStyle;
+const HEARTBEAT_GAP_MS = 180; // double vibration like hearbeat
+const { Medium, Light, Soft } = Haptics.ImpactFeedbackStyle; // three vibrations
 const HEARTBEATS = [[Medium, Light], [Light, Soft], [Soft, Soft]];
 const FLASH_IN_MS = 300;   // "found it" flash: up…
 const FLASH_OUT_MS = 900;  // …and gently back down
@@ -42,8 +41,6 @@ function EdgeStrips({ id, color, opacity }: { id: string; color: string; opacity
     );
 }
 
-// Pink edge glow that breathes while you're both looking, with one success buzz, then
-// a few fading heartbeats, each when the glow is at its brightest.
 export function TogetherGlow({ visible }: { visible: boolean }) {
     const fade = useRef(new Animated.Value(0)).current;
     const pulse = useRef(new Animated.Value(1)).current;
@@ -63,7 +60,6 @@ export function TogetherGlow({ visible }: { visible: boolean }) {
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-        // the loop is back at a bright peak every two half-breaths
         let dub: ReturnType<typeof setTimeout> | undefined;
         let beat = 0;
         const heartbeat = setInterval(() => {
@@ -88,10 +84,8 @@ export function TogetherGlow({ visible }: { visible: boolean }) {
     );
 }
 
-// One short flash in the sun/moon's colour when it comes into view.
 export function FoundFlash({ looking }: { looking: Looking }) {
     const opacity = useRef(new Animated.Value(0)).current;
-    // keep the last colour while fading out
     const color = useRef<string>(BODY_COLORS.sun);
     if (looking) color.current = BODY_COLORS[looking];
 

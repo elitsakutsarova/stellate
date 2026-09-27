@@ -1,8 +1,7 @@
 import { useEffect } from "react";
 import { usePairStore } from "@/store/use-pair-store";
 
-// Counts a second every second while you're both looking up. The count itself lives in
-// the pair store (loaded with the pair, saved on every tick); this is only the clock.
+// the clock for time together; the count itself lives in the pair store
 export function useTimeTogether(together: boolean) {
     const addSecond = usePairStore((state) => state.addSecondTogether);
     useEffect(() => {
