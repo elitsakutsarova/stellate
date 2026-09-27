@@ -14,11 +14,12 @@ const Notifications: typeof NotificationsModule | null = notificationsSupported
     ? require("expo-notifications")
     : null;
 
+// only asked while the app is open - hide them there; in the background the phone shows them
 Notifications?.setNotificationHandler({
     handleNotification: async () => ({
-        shouldShowBanner: true,
-        shouldShowList: true,
-        shouldPlaySound: true,
+        shouldShowBanner: false,
+        shouldShowList: false,
+        shouldPlaySound: false,
         shouldSetBadge: false,
     }),
 });
@@ -135,12 +136,12 @@ export const cancelSkyReminders = () =>
     });
 
 // Debug only
-export const sendTestReminder = () =>
+export const sendTestReminder = (body: BodyName) =>
     serialized(async () => {
         if (!Notifications) return;
         await ensureChannel();
         await Notifications.scheduleNotificationAsync({
-            content: reminderContent("moon"),
+            content: reminderContent(body),
             trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 10, channelId: CHANNELS.reminders },
         });
     });

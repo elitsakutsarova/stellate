@@ -4,6 +4,7 @@ import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Linking from "expo-linking";
+import { useKeepAwake } from "expo-keep-awake";
 import { setLocation, setPresence } from "@/lib/api";
 import { cancelSkyReminders, sendTestReminder } from "@/lib/notifications";
 import { usePairStore } from "@/store/use-pair-store";
@@ -14,6 +15,7 @@ import { usePairPresence, type Looking } from "@/hooks/use-pair-presence";
 import { useSkyReminders } from "@/hooks/use-sky-reminders";
 import { useNotificationSettings } from "@/hooks/use-notification-settings";
 import { useLookUpAlerts } from "@/hooks/use-look-up-alerts";
+import { formatDuration, useTimeTogether } from "@/hooks/use-time-together";
 import { SkyViewfinder } from "@/components/sky-viewfinder";
 import { SkyScene } from "@/components/sky-scene";
 import { FoundFlash, TogetherGlow } from "@/components/edge-glow";
@@ -63,6 +65,8 @@ export default function Sky() {
     const pairId = usePairStore((state) => state.pairId);
     const isHydrated = usePairStore((state) => state.isHydrated);
     const clearPair = usePairStore((state) => state.clearPair);
+    // pointing at the sky means not touching the screen - don't let the phone lock
+    useKeepAwake();
 
     const { pair, partnerOnline, partnerLooking, partnerLeft, offline, setLooking } = usePairPresence(isHydrated, deviceId, pairId);
 
@@ -136,6 +140,7 @@ export default function Sky() {
 
     // both looking at the sky - the same body or not
     const together = !partnerLeft && !!myLooking && !!partnerLooking;
+    const timeTogether = useTimeTogether(pairId, together);
 
     useLookUpAlerts({ enabled: notifications.lookUp, pairId, deviceId, myLooking, partnerOnline });
 
@@ -255,6 +260,16 @@ export default function Sky() {
                         </View>
                     )}
 
+                    <View style={{ gap: 12 }}>
+                        <MenuHeading color={palette.menuMuted}>Time together</MenuHeading>
+                        <View style={{ gap: 4 }}>
+                            <Title style={{ fontSize: 32, lineHeight: 38, color: palette.menuAccent }}>{formatDuration(timeTogether)}</Title>
+                            <Body style={{ color: palette.menuMuted, fontSize: 13, lineHeight: 18 }}>
+                                Counts while you both look up at the same time.
+                            </Body>
+                        </View>
+                    </View>
+
                     <View style={{ gap: 16 }}>
                         <MenuHeading color={palette.menuMuted}>Notifications</MenuHeading>
                         <MenuToggle
@@ -277,7 +292,7 @@ export default function Sky() {
                             </Body>
                         )}
                         {__DEV__ && notifications.supported && (
-                            <Pressable onPress={sendTestReminder}>
+                            <Pressable onPress={() => sendTestReminder(active?.name ?? "sun")}>
                                 <Body style={{ color: COLORS.link, fontSize: 14 }}>Debug: test reminder in 10s</Body>
                             </Pressable>
                         )}

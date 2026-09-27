@@ -3,7 +3,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useRouter } from "expo-router";
 import { Alert, AppState } from "react-native";
 import * as Crypto from "expo-crypto";
-import { supabase } from "@/lib/supabase";
+import { closeOldPairChannel, supabase } from "@/lib/supabase";
 import { getPairStatus, ApiError, type PairStatus } from "@/lib/api";
 import { pairChannel, PAIR_CHANGED_EVENT } from "@/lib/constants";
 import { usePairStore } from "@/store/use-pair-store";
@@ -64,39 +64,44 @@ export function usePairPresence(isHydrated: boolean, deviceId: string | null, pa
             }
         };
 
-        const channel = supabase.channel(pairChannel(pairId), {
-            config: { presence: { key: presenceKey } },
-        });
-        channelRef.current = channel;
-        channel
-            .on("broadcast", { event: PAIR_CHANGED_EVENT }, refresh)
-            .on("presence", { event: "sync" }, () => {
-                const state = channel.presenceState<PresencePayload>();
-                const others = Object.keys(state).filter((k) => k !== presenceKey);
-                setPartnerOnline(others.length > 0);
-                // each key holds one payload per connection; the last is the newest
-                const latest = others.length > 0 ? state[others[0]].at(-1) : undefined;
-                setPartnerLooking(latest?.looking ?? null);
-            })
-            .subscribe(async (status) => {
-                if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-                    if (!cancelled) setOffline(true);
-                    return;
-                }
-                if (status !== "SUBSCRIBED") return;
-                // re-send what we're looking at (e.g. after a reconnect)
-                await channel.track({ online: true, looking: lookingRef.current });
-                // fetch only once subscribed, so no change can slip through in between
-                refresh();
+        let channel: RealtimeChannel | undefined;
+        closeOldPairChannel(pairId).then(() => {
+            if (cancelled) return;
+            const ch = supabase.channel(pairChannel(pairId), {
+                config: { presence: { key: presenceKey } },
             });
+            channel = ch;
+            channelRef.current = ch;
+            ch
+                .on("broadcast", { event: PAIR_CHANGED_EVENT }, refresh)
+                .on("presence", { event: "sync" }, () => {
+                    const state = ch.presenceState<PresencePayload>();
+                    const others = Object.keys(state).filter((k) => k !== presenceKey);
+                    setPartnerOnline(others.length > 0);
+                    // each key holds one payload per connection; the last is the newest
+                    const latest = others.length > 0 ? state[others[0]].at(-1) : undefined;
+                    setPartnerLooking(latest?.looking ?? null);
+                })
+                .subscribe(async (status) => {
+                    if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+                        if (!cancelled) setOffline(true);
+                        return;
+                    }
+                    if (status !== "SUBSCRIBED") return;
+                    // re-send what we're looking at (e.g. after a reconnect)
+                    await ch.track({ online: true, looking: lookingRef.current });
+                    // fetch only once subscribed, so no change can slip through in between
+                    refresh();
+                });
+        });
 
         // Leave presence when the app goes to the background (the connection can stay
         // open for a while). Not on "inactive" - iOS uses that for popups too.
         const appState = AppState.addEventListener("change", (state) => {
             if (state === "background") {
-                channel.untrack().catch(() => {});
+                channel?.untrack().catch(() => {});
             } else if (state === "active") {
-                channel.track({ online: true, looking: lookingRef.current }).catch(() => {});
+                channel?.track({ online: true, looking: lookingRef.current }).catch(() => {});
                 refresh(); // catch up on anything that changed while away
             }
         });
@@ -107,7 +112,7 @@ export function usePairPresence(isHydrated: boolean, deviceId: string | null, pa
             clearTimeout(lookingTimer.current);
             appState.remove();
             channelRef.current = null;
-            supabase.removeChannel(channel);
+            if (channel) supabase.removeChannel(channel);
         };
     }, [isHydrated, deviceId, pairId, clearPair]);
 

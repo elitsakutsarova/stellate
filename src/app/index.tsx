@@ -7,7 +7,7 @@ import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-cont
 import Svg, { Path } from "react-native-svg";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createPair, joinPair } from "@/lib/api";
-import { supabase } from "@/lib/supabase";
+import { closeOldPairChannel, supabase } from "@/lib/supabase";
 import { pairChannel, PAIR_CHANGED_EVENT } from "@/lib/constants";
 import { COLORS, FONTS, FRAME, fitScale } from "@/lib/theme";
 import { usePairStore } from "@/store/use-pair-store";
@@ -148,12 +148,19 @@ export default function Index() {
   // go to the sky by yourself as soon as your special someone joins
   useEffect(() => {
     if (!pendingPair) return;
-    const channel = supabase
-      .channel(pairChannel(pendingPair.id))
-      .on("broadcast", { event: PAIR_CHANGED_EVENT }, () => enterSky(pendingPair))
-      .subscribe();
-    waitChannel.current = channel;
+    let cancelled = false;
+    let channel: RealtimeChannel | undefined;
+    closeOldPairChannel(pendingPair.id).then(() => {
+      if (cancelled) return;
+      channel = supabase
+        .channel(pairChannel(pendingPair.id))
+        .on("broadcast", { event: PAIR_CHANGED_EVENT }, () => enterSky(pendingPair))
+        .subscribe();
+      waitChannel.current = channel;
+    });
     return () => {
+      cancelled = true;
+      if (!channel) return;
       if (waitChannel.current === channel) waitChannel.current = null;
       supabase.removeChannel(channel);
     };
