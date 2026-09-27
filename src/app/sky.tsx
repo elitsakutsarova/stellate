@@ -9,7 +9,7 @@ import { setLocation, setPresence } from "@/lib/api";
 import { cancelSkyReminders, sendTestReminder } from "@/lib/notifications";
 import { usePairStore } from "@/store/use-pair-store";
 import { useLocation } from "@/hooks/use-location";
-import { useSkyBodies, basisLookingAt, type SkyBody } from "@/hooks/use-sky-bodies";
+import { useSkyBodies, type SkyBody } from "@/hooks/use-sky-bodies";
 import { useDeviceOrientation } from "@/hooks/use-device-orientation";
 import { usePairPresence, type Looking } from "@/hooks/use-pair-presence";
 import { useSkyReminders } from "@/hooks/use-sky-reminders";
@@ -24,10 +24,20 @@ import { BottomSheet } from "@/components/bottom-sheet";
 import { CodeRow } from "@/components/code-row";
 import { Body, Button, MAX_TEXT_WIDTH, NightBackground, Pill, Title, WaitingLine } from "@/components/ui";
 import { COLORS, fitScale } from "@/lib/theme";
+import { directionTo } from "@/lib/geo";
 import { skyColors, SKY_PRESETS, type SkyPreset } from "@/lib/sky-colors";
 
 const NIGHT_UNTIL_KNOWN = -20;
 const GLIDE_MS = 1200;
+// Debug only: pretend your special someone is in one of these places.
+const DEBUG_PARTNERS = [
+    null,
+    { label: "Paris", latitude: 48.86, longitude: 2.35 },
+    { label: "New York", latitude: 40.71, longitude: -74.01 },
+    { label: "Tokyo", latitude: 35.68, longitude: 139.69 },
+    { label: "Sydney", latitude: -33.87, longitude: 151.21 },
+];
+const PARTNER_NEARBY_KM = 20; // closer than this, a direction means little
 const MAX_SKY_WAIT_MS = 4000; // show the sky anyway after this (e.g. a simulator has no sensors)
 const SKY_FADE_MS = 500;
 
@@ -107,27 +117,6 @@ export default function Sky() {
     };
 
     const { bodies: realBodies, active: realActive } = useSkyBodies(coords);
-    const sensors = useDeviceOrientation(!!coords);
-    const { declination } = sensors;
-
-    // The sky waits for the sensors' first readings and the location (or its error),
-    // so it appears already in place instead of swinging there.
-    const [skyReady, setSkyReady] = useState(false);
-    useEffect(() => {
-        if (sensors.ready && (coords || locationError)) setSkyReady(true);
-    }, [sensors.ready, coords, locationError]);
-    useEffect(() => {
-        const timer = setTimeout(() => setSkyReady(true), MAX_SKY_WAIT_MS);
-        return () => clearTimeout(timer);
-    }, []);
-
-    // the sky fades in over the "finding" message, which then goes
-    const skyOpacity = useRef(new Animated.Value(0)).current;
-    const [finding, setFinding] = useState(true);
-    useEffect(() => {
-        if (!skyReady) return;
-        Animated.timing(skyOpacity, { toValue: 1, duration: SKY_FADE_MS, useNativeDriver: true }).start(() => setFinding(false));
-    }, [skyReady, skyOpacity]);
 
     // Debug only: jump between times of day.
     const [debugSky, setDebugSky] = useState<SkyPreset | null>(null);
@@ -155,11 +144,39 @@ export default function Sky() {
     // Debug only: pretend the phone points straight at the sun or moon.
     const [debugTarget, setDebugTarget] = useState<Looking>(null);
     const debugBody = __DEV__ ? bodies.find((b) => b.name === debugTarget) : undefined;
-    const { E, N, U } = debugBody
-        ? basisLookingAt(debugBody.bearing, debugBody.altitude, declination)
-        : sensors;
     const nextDebugTarget: Looking = debugTarget === null ? "sun" : debugTarget === "sun" ? "moon" : null;
+
+    const sensors = useDeviceOrientation(!!coords, debugBody ?? null);
+    const { declination } = sensors;
+
+    // The sky waits for the sensors' first readings and the location (or its error),
+    // so it appears already in place instead of swinging there.
+    const [skyReady, setSkyReady] = useState(false);
+    useEffect(() => {
+        if (sensors.ready && (coords || locationError)) setSkyReady(true);
+    }, [sensors.ready, coords, locationError]);
+    useEffect(() => {
+        const timer = setTimeout(() => setSkyReady(true), MAX_SKY_WAIT_MS);
+        return () => clearTimeout(timer);
+    }, []);
+
+    // the sky fades in over the "finding" message, which then goes
+    const skyOpacity = useRef(new Animated.Value(0)).current;
+    const [finding, setFinding] = useState(true);
+    useEffect(() => {
+        if (!skyReady) return;
+        Animated.timing(skyOpacity, { toValue: 1, duration: SKY_FADE_MS, useNativeDriver: true }).start(() => setFinding(false));
+    }, [skyReady, skyOpacity]);
+
     const palette = skyColors(sunAltitude);
+
+    // which way your special someone is - not shown if they're right nearby
+    const [debugPartner, setDebugPartner] = useState(0);
+    const fakePartner = __DEV__ ? DEBUG_PARTNERS[debugPartner] : null;
+    const nextPartner = DEBUG_PARTNERS[(debugPartner + 1) % DEBUG_PARTNERS.length];
+    const partnerLocation = fakePartner ?? (partnerLeft ? null : pair?.partnerLocation);
+    const partnerDirection = coords && partnerLocation ? directionTo(coords, partnerLocation) : null;
+    const partner = partnerDirection && partnerDirection.km >= PARTNER_NEARBY_KM ? partnerDirection : null;
 
     const [myLooking, setMyLooking] = useState<Looking>(null);
     const handleLookingChange = useCallback((looking: Looking) => {
@@ -213,8 +230,8 @@ export default function Sky() {
             <Animated.View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { opacity: skyOpacity }]}>
                 {skyReady && (
                     <>
-                        <SkyScene bodies={bodies} sunAltitude={sunAltitude} E={E} N={N} U={U} declination={declination} />
-                        <SkyViewfinder bodies={bodies} active={active} E={E} N={N} U={U} declination={declination} onLookingChange={handleLookingChange} />
+                        <SkyScene bodies={bodies} sunAltitude={sunAltitude} basis={sensors.basis} declination={declination} partner={partner} />
+                        <SkyViewfinder bodies={bodies} active={active} basis={sensors.basis} declination={declination} onLookingChange={handleLookingChange} />
                     </>
                 )}
             </Animated.View>
@@ -249,6 +266,14 @@ export default function Sky() {
                     style={{ position: "absolute", top: insets.top + 156, right: 12, zIndex: 2 }}
                 >
                     <Pill>{`Debug moon: ${phasePreset?.label ?? "real"} -> ${nextPhase?.label ?? "real"}`}</Pill>
+                </Pressable>
+            )}
+            {__DEV__ && (
+                <Pressable
+                    onPress={() => setDebugPartner((debugPartner + 1) % DEBUG_PARTNERS.length)}
+                    style={{ position: "absolute", top: insets.top + 192, right: 12, zIndex: 2 }}
+                >
+                    <Pill>{`Debug partner: ${fakePartner?.label ?? "real"} -> ${nextPartner?.label ?? "real"}`}</Pill>
                 </Pressable>
             )}
 

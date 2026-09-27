@@ -1,20 +1,26 @@
-import { useEffect, useRef, useState } from "react";
-import { StyleSheet } from "react-native";
+import { useEffect, useState } from "react";
+import { StyleSheet, View } from "react-native";
 import { useSafeAreaFrame } from "react-native-safe-area-context";
-import Svg, { Circle, Defs, G, Line, LinearGradient, Path, Polygon, RadialGradient, Rect, Stop, Text } from "react-native-svg";
-import { groundPolygon, projectToScreen, towardsSun, type MoonPhase, type SkyBody } from "@/hooks/use-sky-bodies";
-import { lerpVec, normalize, type Vec3 } from "@/hooks/use-device-orientation";
+import {
+    Canvas, Circle, DashPathEffect, Group, LinearGradient, Path, RadialGradient, Rect, Skia, Text, useFont, vec, type SkFont,
+} from "@shopify/react-native-skia";
+import {
+    useDerivedValue, useFrameCallback, useSharedValue, withRepeat, withSequence, withTiming, Easing, type SharedValue,
+} from "react-native-reanimated";
+import { groundPolygon, projector, towardsSun, type MoonPhase, type SkyBody } from "@/hooks/use-sky-bodies";
+import { lerpVec, normalize, type Basis, type Vec3 } from "@/hooks/use-device-orientation";
 import { skyColors } from "@/lib/sky-colors";
-import { FRAME } from "@/lib/theme";
-import { Clouds, IN_FRONT_DEG, ShootingStars, Stars } from "@/components/sky-decor";
+import { COLORS as THEME, FRAME } from "@/lib/theme";
+import { formatDistance } from "@/lib/geo";
+import { Clouds, IN_FRONT_DEG, ShootingStars, Stars, type SkyView } from "@/components/sky-decor";
 
 type Props = {
     bodies: SkyBody[];
     sunAltitude: number; // sets the sky's colours and the stars (can be a debug value)
-    E: Vec3;
-    N: Vec3;
-    U: Vec3;
+    basis: SharedValue<Basis>; // where the phone points, straight from the sensors
     declination: number;
+    // which way (compass bearing) your special someone is, and how far; null = unknown
+    partner: { bearing: number; km: number } | null;
 };
 
 const CARDINALS = [
@@ -26,9 +32,7 @@ const CARDINALS = [
 
 const COLORS = {
     groundFar: "#05060F", // deep below the horizon (just below it follows the time of day)
-    horizon: "#A9B4FF",
     label: "#C8CEF5",
-    north: "#F7B7C8",
     grid: "#A9B4FF",
     moonLit: "#F5F3EE",
     moonDark: "#0A0F2C", // the unlit part: a faint disc against the sky
@@ -49,184 +53,287 @@ const GRID_LINES = [
 
 // stars are fully out at nautical twilight (sun 12 degrees below the horizon)
 const FULL_NIGHT_SUN_ALTITUDE = -12;
+// shooting stars once the stars are mostly out
+const SHOOTING_STARS_FROM = 0.5;
 
 const SMOOTHING = 0.1;
+const GROUND_FADE_PX = 320;
+const SUN_GLOW = 56;
+const MOON_GLOW = 48;
+const MOON_RADIUS = 13; // the disc, inside its glow
 
-const distance = (a: Vec3, b: Vec3) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y) + Math.abs(a.z - b.z);
+const distance = (a: Vec3, b: Vec3) => {
+    "worklet";
+    return Math.abs(a.x - b.x) + Math.abs(a.y - b.y) + Math.abs(a.z - b.z);
+};
 
-// Sensors update ~30 times a second; this eases towards them every frame, so the
-// whole sky moves smoothly and together.
-function useSmoothedBasis(E: Vec3, N: Vec3, U: Vec3) {
-    const target = useRef({ E, N, U });
-    target.current = { E, N, U };
-    const [smooth, setSmooth] = useState({ E, N, U });
-
-    useEffect(() => {
-        let current = target.current;
-        let frame: number;
-        function loop() {
-            frame = requestAnimationFrame(loop);
-            const t = target.current;
-            const next = {
-                E: normalize(lerpVec(current.E, t.E, SMOOTHING)),
-                N: normalize(lerpVec(current.N, t.N, SMOOTHING)),
-                U: normalize(lerpVec(current.U, t.U, SMOOTHING)),
-            };
-            const moved = distance(next.E, current.E) + distance(next.N, current.N) + distance(next.U, current.U);
-            current = next;
-            if (moved > 1e-5) setSmooth(next);
-        }
-        loop();
-        return () => cancelAnimationFrame(frame);
-    }, []);
-
+// Sensors update ~30 times a second; this eases towards them every frame, on the UI
+// thread, so the whole sky moves smoothly and together.
+function useSmoothedBasis(target: SharedValue<Basis>) {
+    // read once: Reanimated warns about reading shared values while re-rendering
+    const [start] = useState(() => target.value);
+    const smooth = useSharedValue(start);
+    useFrameCallback(() => {
+        const t = target.value;
+        const c = smooth.value;
+        const next = {
+            E: normalize(lerpVec(c.E, t.E, SMOOTHING)),
+            N: normalize(lerpVec(c.N, t.N, SMOOTHING)),
+            U: normalize(lerpVec(c.U, t.U, SMOOTHING)),
+        };
+        if (distance(next.E, c.E) + distance(next.N, c.N) + distance(next.U, c.U) > 1e-5) smooth.value = next;
+    });
     return smooth;
 }
 
-const GROUND_FADE_PX = 320;
-const MOON_RADIUS = 13; // the disc, inside its glow
+// where a body is on screen, and whether it's in front of you
+function useBodyPosition(sky: SkyView, body: SkyBody) {
+    const { basis, declination, width, height } = sky;
+    return useDerivedValue(() => {
+        const p = projector(basis.value, declination, width, height)(body.bearing, body.altitude);
+        return { c: vec(p.x, p.y), inFront: p.angleFromCenter < IN_FRONT_DEG };
+    }, [declination, width, height, body.bearing, body.altitude]);
+}
+
+function Sun({ sky, body, scale }: { sky: SkyView; body: SkyBody; scale: number }) {
+    const position = useBodyPosition(sky, body);
+    const c = useDerivedValue(() => position.value.c);
+    const opacity = useDerivedValue(() => (position.value.inFront ? 1 : 0));
+    const r = SUN_GLOW * scale;
+    return (
+        <Circle c={c} r={r} opacity={opacity}>
+            <RadialGradient
+                c={c} r={r} positions={[0, 0.3, 1]}
+                colors={["#FFF4D6", "rgba(255, 210, 122, 0.9)", "rgba(255, 179, 71, 0)"]}
+            />
+        </Circle>
+    );
+}
 
 // The moon as it really looks tonight: the lit part is half the disc plus or minus half
 // an ellipse (the terminator), turned so the lit side faces the sun.
-function Moon({ x, y, scale, phase, angle }: { x: number; y: number; scale: number; phase: MoonPhase; angle: number }) {
+function Moon({ sky, body, phase, scale }: { sky: SkyView; body: SkyBody; phase: MoonPhase; scale: number }) {
+    const { basis, declination, width, height } = sky;
     const r = MOON_RADIUS * scale;
     const terminator = r * Math.abs(1 - 2 * phase.fraction); // 0 at half moon
     const bulge = phase.fraction < 0.5 ? 0 : 1; // crescent: towards the lit side; gibbous: away
     // drawn with the lit side to the right, then turned
-    const lit = `M0,${-r}A${r},${r} 0 0,1 0,${r}A${terminator},${r} 0 0,${bulge} 0,${-r}Z`;
+    const lit = Skia.Path.MakeFromSVGString(`M0,${-r}A${r},${r} 0 0,1 0,${r}A${terminator},${r} 0 0,${bulge} 0,${-r}Z`);
+
+    const placement = useDerivedValue(() => {
+        const at = projector(basis.value, declination, width, height);
+        const p = at(body.bearing, body.altitude);
+        // lit side to the right when waxing, left when waning (as seen from the north)
+        const angle = (phase.sun && towardsSun(body, phase.sun, at)) ?? (phase.waxing ? 0 : 180);
+        return {
+            transform: [{ translateX: p.x }, { translateY: p.y }, { rotate: (angle * Math.PI) / 180 }],
+            opacity: p.angleFromCenter < IN_FRONT_DEG ? 1 : 0,
+        };
+    }, [declination, width, height, body.bearing, body.altitude, phase]);
+    const transform = useDerivedValue(() => placement.value.transform);
+    const opacity = useDerivedValue(() => placement.value.opacity);
+
+    const glow = MOON_GLOW * scale;
     return (
-        <G transform={`translate(${x} ${y}) rotate(${angle})`}>
+        <Group transform={transform} opacity={opacity}>
             {/* dimmer glow when less of it is lit */}
-            <Circle r={48 * scale} fill="url(#moon)" opacity={0.3 + 0.7 * phase.fraction} />
-            <Circle r={r} fill={COLORS.moonDark} fillOpacity={0.35} />
-            <Path d={lit} fill={COLORS.moonLit} />
-        </G>
+            <Circle cx={0} cy={0} r={glow} opacity={0.3 + 0.7 * phase.fraction}>
+                <RadialGradient
+                    c={vec(0, 0)} r={glow} positions={[0.2, 0.45, 1]}
+                    colors={["rgba(221, 227, 255, 0.6)", "rgba(221, 227, 255, 0.25)", "rgba(201, 211, 255, 0)"]}
+                />
+            </Circle>
+            <Circle cx={0} cy={0} r={r} color={COLORS.moonDark} opacity={0.35} />
+            {lit && <Path path={lit} color={COLORS.moonLit} />}
+        </Group>
     );
 }
-// shooting stars once the stars are mostly out
-const SHOOTING_STARS_FROM = 0.5;
 
-export function SkyScene({ bodies, sunAltitude, declination, ...raw }: Props) {
+// below the horizon: a faint dashed outline through the ground shows where it is
+function BelowHorizonRing({ sky, body, scale }: { sky: SkyView; body: SkyBody; scale: number }) {
+    const position = useBodyPosition(sky, body);
+    const c = useDerivedValue(() => position.value.c);
+    const opacity = useDerivedValue(() => (position.value.inFront ? 0.35 : 0));
+    return (
+        <Circle c={c} r={14 * scale} color={COLORS.label} opacity={opacity} style="stroke" strokeWidth={1}>
+            <DashPathEffect intervals={[3, 4]} />
+        </Circle>
+    );
+}
+
+function Cardinal({ sky, label, bearing, font, color, scale }: {
+    sky: SkyView; label: string; bearing: number; font: SkFont; color: string; scale: number;
+}) {
+    const { basis, declination, width, height } = sky;
+    const halfWidth = font.measureText(label).width / 2;
+    const place = useDerivedValue(() => {
+        const p = projector(basis.value, declination, width, height)(bearing, 0);
+        return { x: p.x - halfWidth, y: p.y - 10 * scale, opacity: p.angleFromCenter > IN_FRONT_DEG ? 0 : 0.5 };
+    }, [declination, width, height, bearing, halfWidth, scale]);
+    const x = useDerivedValue(() => place.value.x);
+    const y = useDerivedValue(() => place.value.y);
+    const opacity = useDerivedValue(() => place.value.opacity);
+    return <Text x={x} y={y} text={label} font={font} color={color} opacity={opacity} />;
+}
+
+// A soft, breathing pink light just above your horizon, in the direction of your special
+// someone - "they're over there, under the same sky" - with how far away they are.
+const MARKER_ALTITUDE = 3; // degrees above the horizon
+const MARKER_BREATH_MS = 1800;
+
+function PartnerMarker({ sky, bearing, km, font, scale }: {
+    sky: SkyView; bearing: number; km: number; font: SkFont | null; scale: number;
+}) {
+    const { basis, declination, width, height } = sky;
+    const place = useDerivedValue(() => {
+        const p = projector(basis.value, declination, width, height)(bearing, MARKER_ALTITUDE);
+        return { x: p.x, y: p.y, inFront: p.angleFromCenter < IN_FRONT_DEG };
+    }, [declination, width, height, bearing]);
+    const c = useDerivedValue(() => vec(place.value.x, place.value.y));
+    const opacity = useDerivedValue(() => (place.value.inFront ? 1 : 0));
+
+    const breath = useSharedValue(0.5);
+    useEffect(() => {
+        const ease = { duration: MARKER_BREATH_MS, easing: Easing.inOut(Easing.sin) };
+        breath.value = withRepeat(withSequence(withTiming(1, ease), withTiming(0.5, ease)), -1);
+    }, [breath]);
+
+    // two short lines above the light, centred on it
+    const name = "your special someone";
+    const distance = formatDistance(km);
+    const nameHalf = font ? font.measureText(name).width / 2 : 0;
+    const distanceHalf = font ? font.measureText(distance).width / 2 : 0;
+    const nameX = useDerivedValue(() => place.value.x - nameHalf, [nameHalf]);
+    const nameY = useDerivedValue(() => place.value.y - 26 * scale, [scale]);
+    const distanceX = useDerivedValue(() => place.value.x - distanceHalf, [distanceHalf]);
+    const distanceY = useDerivedValue(() => place.value.y - 12 * scale, [scale]);
+
+    const glow = 18 * scale;
+    return (
+        <Group opacity={opacity}>
+            <Circle c={c} r={glow} opacity={breath}>
+                <RadialGradient c={c} r={glow} colors={["rgba(247, 183, 200, 0.85)", "rgba(247, 183, 200, 0)"]} />
+            </Circle>
+            <Circle c={c} r={3 * scale} color="#FFF4F7" />
+            {font && (
+                <>
+                    <Text x={nameX} y={nameY} text={name} font={font} color={THEME.together} opacity={0.9} />
+                    <Text x={distanceX} y={distanceY} text={distance} font={font} color={COLORS.label} opacity={0.7} />
+                </>
+            )}
+        </Group>
+    );
+}
+
+export function SkyScene({ bodies, sunAltitude, basis, declination, partner }: Props) {
     const palette = skyColors(sunAltitude);
     const { width, height } = useSafeAreaFrame();
     // The sky always shows the same degrees top to bottom, so on a taller screen (tablet)
     // it's bigger; fixed-size things (stars, glows, letters) grow with it.
     const k = Math.max(1, height / FRAME.height);
-    const { E, N, U } = useSmoothedBasis(raw.E, raw.N, raw.U);
-    const { ground, horizon, groundDir, horizonPoint, skyHigh } = groundPolygon(U, width, height);
-    const fadeFrom = horizon.length === 2
-        ? { x: (horizon[0][0] + horizon[1][0]) / 2, y: (horizon[0][1] + horizon[1][1]) / 2 }
-        : { x: width / 2, y: height / 2 };
-    const fadeTo = { x: fadeFrom.x + groundDir.x * GROUND_FADE_PX, y: fadeFrom.y + groundDir.y * GROUND_FADE_PX };
-    const at = (bearing: number, altitude: number) =>
-        projectToScreen(E, N, U, declination, bearing, altitude, width, height);
+    const smooth = useSmoothedBasis(basis);
+    const sky: SkyView = { basis: smooth, declination, width, height };
+    const font = useFont(require("@/assets/fonts/PublicSans-Medium.ttf"), 16 * k);
+    const smallFont = useFont(require("@/assets/fonts/PublicSans-Regular.ttf"), 11 * k);
 
-    // points behind you would flip across the screen, so lines are split there
-    const visibleSegments = (points: { bearing: number; altitude: number }[]) => {
-        const segments: string[][] = [[]];
-        for (const { bearing, altitude } of points) {
-            const p = at(bearing, altitude);
-            if (p.angleFromCenter < IN_FRONT_DEG) segments[segments.length - 1].push(`${p.x},${p.y}`);
-            else if (segments[segments.length - 1].length > 0) segments.push([]);
+    const shape = useDerivedValue(() => groundPolygon(smooth.value.U, width, height), [width, height]);
+
+    // the sky gradient is anchored to the real horizon, not the screen
+    const skyStart = useDerivedValue(() => vec(shape.value.horizonPoint.x, shape.value.horizonPoint.y));
+    const skyEnd = useDerivedValue(() => vec(shape.value.skyHigh.x, shape.value.skyHigh.y));
+
+    const groundPath = useDerivedValue(() => {
+        const p = Skia.Path.Make();
+        const g = shape.value.ground;
+        if (g.length > 2) {
+            p.moveTo(g[0][0], g[0][1]);
+            for (let i = 1; i < g.length; i++) p.lineTo(g[i][0], g[i][1]);
+            p.close();
         }
-        return segments.filter((seg) => seg.length > 1).map((seg) => `M${seg.join("L")}`);
-    };
-    // the whole grid as one path
-    const grid = GRID_LINES.flatMap(visibleSegments).join("");
+        return p;
+    });
+    // the ground fades from the horizon down
+    const groundFade = useDerivedValue(() => {
+        const { horizon, groundDir } = shape.value;
+        const from = horizon.length === 2
+            ? { x: (horizon[0][0] + horizon[1][0]) / 2, y: (horizon[0][1] + horizon[1][1]) / 2 }
+            : { x: width / 2, y: height / 2 };
+        return { from, to: { x: from.x + groundDir.x * GROUND_FADE_PX, y: from.y + groundDir.y * GROUND_FADE_PX } };
+    }, [width, height]);
+    const groundStart = useDerivedValue(() => vec(groundFade.value.from.x, groundFade.value.from.y));
+    const groundEnd = useDerivedValue(() => vec(groundFade.value.to.x, groundFade.value.to.y));
+
+    const horizonLine = useDerivedValue(() => {
+        const p = Skia.Path.Make();
+        const h = shape.value.horizon;
+        if (h.length === 2) p.moveTo(h[0][0], h[0][1]).lineTo(h[1][0], h[1][1]);
+        return p;
+    });
+
+    // the whole grid as one path; points behind you would flip across the screen, so
+    // lines are split there
+    const grid = useDerivedValue(() => {
+        const at = projector(smooth.value, declination, width, height);
+        const p = Skia.Path.Make();
+        for (const line of GRID_LINES) {
+            let drawing = false;
+            for (const { bearing, altitude } of line) {
+                const s = at(bearing, altitude);
+                if (s.angleFromCenter >= IN_FRONT_DEG) drawing = false;
+                else if (drawing) p.lineTo(s.x, s.y);
+                else {
+                    p.moveTo(s.x, s.y);
+                    drawing = true;
+                }
+            }
+        }
+        return p;
+    }, [declination, width, height]);
 
     const night = Math.min(1, Math.max(0, sunAltitude / FULL_NIGHT_SUN_ALTITUDE));
 
-    const placed = bodies
-        .map((body) => ({ body, p: at(body.bearing, body.altitude) }))
-        .filter(({ p }) => p.angleFromCenter < IN_FRONT_DEG);
-
     return (
-        <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
-            <Defs>
-                {/* anchored to the real horizon, not the screen */}
-                <LinearGradient
-                    id="sky" gradientUnits="userSpaceOnUse"
-                    x1={horizonPoint.x} y1={horizonPoint.y} x2={skyHigh.x} y2={skyHigh.y}
-                >
-                    {palette.stops.map(({ offset, color }) => <Stop key={offset} offset={offset} stopColor={color} />)}
-                </LinearGradient>
-                <LinearGradient
-                    id="ground" gradientUnits="userSpaceOnUse"
-                    x1={fadeFrom.x} y1={fadeFrom.y} x2={fadeTo.x} y2={fadeTo.y}
-                >
-                    <Stop offset="0" stopColor={palette.ground} />
-                    <Stop offset="1" stopColor={COLORS.groundFar} />
-                </LinearGradient>
-                <RadialGradient id="sun">
-                    <Stop offset="0" stopColor="#FFF4D6" />
-                    <Stop offset="0.3" stopColor={BODY_COLORS.sun} stopOpacity="0.9" />
-                    <Stop offset="1" stopColor="#FFB347" stopOpacity="0" />
-                </RadialGradient>
-                {/* only a glow - the disc itself is drawn by <Moon> */}
-                <RadialGradient id="moon">
-                    <Stop offset="0.2" stopColor={BODY_COLORS.moon} stopOpacity="0.6" />
-                    <Stop offset="0.45" stopColor={BODY_COLORS.moon} stopOpacity="0.25" />
-                    <Stop offset="1" stopColor="#C9D3FF" stopOpacity="0" />
-                </RadialGradient>
-            </Defs>
+        // full screen, so the sky maths match the screen
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            <Canvas style={StyleSheet.absoluteFill}>
+                <Rect x={0} y={0} width={width} height={height}>
+                    <LinearGradient
+                        start={skyStart} end={skyEnd}
+                        colors={palette.stops.map((s) => s.color)} positions={palette.stops.map((s) => s.offset)}
+                    />
+                </Rect>
 
-            <Rect x="0" y="0" width={width} height={height} fill="url(#sky)" />
+                <Stars sky={sky} night={night} scale={k} />
+                <ShootingStars sky={sky} active={night >= SHOOTING_STARS_FROM} scale={k} />
 
-            <Stars at={at} night={night} scale={k} />
-            <ShootingStars at={at} active={night >= SHOOTING_STARS_FROM} scale={k} />
+                <Path path={grid} style="stroke" strokeWidth={1} color={COLORS.grid} opacity={GRID_OPACITY} />
 
-            {grid !== "" && <Path d={grid} fill="none" stroke={COLORS.grid} strokeOpacity={GRID_OPACITY} strokeWidth={1} />}
+                {/* in front of the grid, behind the sun/moon */}
+                <Clouds sky={sky} color={palette.cloud} opacity={palette.cloudOpacity} bodies={bodies} />
 
-            {/* in front of the grid, behind the sun/moon glows */}
-            <Clouds at={at} color={palette.cloud} opacity={palette.cloudOpacity} bodies={bodies} />
+                {/* drawn before the ground, so a setting sun/moon sinks behind it */}
+                {bodies.map((body) => body.phase
+                    ? <Moon key={body.name} sky={sky} body={body} phase={body.phase} scale={k} />
+                    : <Sun key={body.name} sky={sky} body={body} scale={k} />)}
 
-            {/* drawn before the ground, so a setting sun/moon sinks behind it */}
-            {placed.map(({ body, p }) => body.phase ? (
-                <Moon
-                    key={body.name} x={p.x} y={p.y} scale={k} phase={body.phase}
-                    // lit side to the right when waxing, left when waning (as seen from the north)
-                    angle={(body.phase.sun && towardsSun(body, body.phase.sun, at)) ?? (body.phase.waxing ? 0 : 180)}
-                />
-            ) : (
-                <Circle key={body.name} cx={p.x} cy={p.y} r={56 * k} fill="url(#sun)" />
-            ))}
+                <Path path={groundPath}>
+                    <LinearGradient start={groundStart} end={groundEnd} colors={[palette.ground, COLORS.groundFar]} />
+                </Path>
+                <Path path={horizonLine} style="stroke" strokeWidth={1} color={palette.labels} opacity={0.35} />
 
-            {ground.length > 2 && (
-                <Polygon points={ground.map((p) => p.join(",")).join(" ")} fill="url(#ground)" />
-            )}
-            {horizon.length === 2 && (
-                <Line
-                    x1={horizon[0][0]} y1={horizon[0][1]}
-                    x2={horizon[1][0]} y2={horizon[1][1]}
-                    stroke={palette.labels} strokeOpacity={0.35} strokeWidth={1}
-                />
-            )}
+                {partner && <PartnerMarker sky={sky} bearing={partner.bearing} km={partner.km} font={smallFont} scale={k} />}
 
-            {/* below the horizon: a faint outline through the ground shows where it is */}
-            {placed.filter(({ body }) => body.altitude < 0).map(({ body, p }) => (
-                <Circle
-                    key={`${body.name}-ring`}
-                    cx={p.x} cy={p.y} r={14 * k}
-                    fill="none" stroke={COLORS.label} strokeOpacity={0.35} strokeDasharray="3 4"
-                />
-            ))}
+                {bodies.filter((body) => body.altitude < 0).map((body) => (
+                    <BelowHorizonRing key={body.name} sky={sky} body={body} scale={k} />
+                ))}
 
-            {CARDINALS.map(({ label, bearing }) => {
-                const p = at(bearing, 0);
-                if (p.angleFromCenter > IN_FRONT_DEG) return null;
-                return (
-                    <Text
-                        key={label}
-                        x={p.x} y={p.y - 10 * k}
-                        fill={label === "N" ? palette.north : palette.labels}
-                        fillOpacity={0.5}
-                        fontSize={16 * k} fontWeight="600" textAnchor="middle"
-                    >
-                        {label}
-                    </Text>
-                );
-            })}
-
-        </Svg>
+                {font && CARDINALS.map(({ label, bearing }) => (
+                    <Cardinal
+                        key={label} sky={sky} label={label} bearing={bearing} font={font} scale={k}
+                        color={label === "N" ? palette.north : palette.labels}
+                    />
+                ))}
+            </Canvas>
+        </View>
     );
 }

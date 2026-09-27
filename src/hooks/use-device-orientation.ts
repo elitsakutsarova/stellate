@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from "react";
+import { useSharedValue } from "react-native-reanimated";
 import { Accelerometer, Magnetometer } from "expo-sensors";
 import * as Location from "expo-location";
+import { basisLookingAt, type SkyPoint } from "@/hooks/use-sky-bodies";
 
 export type Vec3 = { x: number; y: number; z: number };
+export type Basis = { E: Vec3; N: Vec3; U: Vec3 };
 
+// "worklet": also used on the UI thread, where the sky eases towards the sensors.
 export function normalize(v: Vec3): Vec3 {
+    "worklet";
     const len = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z) || 1;
     return { x: v.x / len, y: v.y / len, z: v.z / len };
 }
@@ -12,6 +17,7 @@ function cross(a: Vec3, b: Vec3): Vec3 {
     return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x };
 }
 export function lerpVec(a: Vec3, b: Vec3, t: number): Vec3 {
+    "worklet";
     return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t };
 }
 
@@ -19,7 +25,7 @@ export function lerpVec(a: Vec3, b: Vec3, t: number): Vec3 {
 // the screen) from raw gravity + magnetic field - a tilt-compensated compass that
 // works at any angle. DeviceMotion.rotation isn't used: its Euler angles follow
 // different conventions on iOS and Android.
-function computeBasis(gravity: Vec3, magnetic: Vec3) {
+function computeBasis(gravity: Vec3, magnetic: Vec3): Basis {
     const U = normalize(gravity);
     const E = normalize(cross(magnetic, gravity));
     const N = normalize(cross(gravity, E));
@@ -34,12 +40,20 @@ const SENSOR_INTERVAL_MS = 33;
 const GRAVITY_SMOOTHING = 0.1;
 const MAGNETIC_SMOOTHING = 0.06;
 
-export function useDeviceOrientation(hasLocationPermission: boolean) {
-    const [basis, setBasis] = useState(() => computeBasis({ x: 0, y: 0, z: 1 }, { x: 0, y: 1, z: -1 }));
-    const [azimuth, setAzimuth] = useState(0);
-    const [altitude, setAltitude] = useState(0);
+// basis is a shared value, not state: it changes ~30 times a second, and only the sky
+// drawing (on the UI thread) needs it - so the screen doesn't re-render for it.
+// lookAt (debug): pretend the phone points straight at this spot instead.
+export function useDeviceOrientation(hasLocationPermission: boolean, lookAt: SkyPoint | null = null) {
+    const basis = useSharedValue<Basis>(computeBasis({ x: 0, y: 0, z: 1 }, { x: 0, y: 1, z: -1 }));
     const [declination, setDeclination] = useState(0);
     const [ready, setReady] = useState(false); // both sensors have given a first reading
+    const readyRef = useRef(false);
+    const overrideRef = useRef(false);
+    overrideRef.current = !!lookAt;
+
+    useEffect(() => {
+        if (lookAt) basis.value = basisLookingAt(lookAt.bearing, lookAt.altitude, declination);
+    }, [lookAt?.bearing, lookAt?.altitude, declination, basis]);
 
     const gravity = useRef<Vec3>({ x: 0, y: 0, z: 1 });
     const magnetic = useRef<Vec3>({ x: 0, y: 1, z: -1 });
@@ -59,21 +73,19 @@ export function useDeviceOrientation(hasLocationPermission: boolean) {
                 const wanted = ((h.trueHeading - h.magHeading + 540) % 360) - 180;
                 declinationRef.current = first ? wanted : declinationRef.current + (wanted - declinationRef.current) * 0.1;
                 first = false;
-                setDeclination(declinationRef.current);
+                // rounded, so tiny changes don't re-render the screen
+                setDeclination(Math.round(declinationRef.current * 10) / 10);
             });
         })();
         return () => sub?.remove();
     }, [hasLocationPermission]);
 
     function recompute() {
-        const { E, N, U } = computeBasis(gravity.current, magnetic.current);
-        setBasis({ E, N, U });
-
-        const we = -E.z, wn = -N.z, wu = -U.z;
-        const magAz = ((Math.atan2(we, wn) * 180) / Math.PI + 360) % 360;
-        setAzimuth((magAz + declinationRef.current + 360) % 360);
-        setAltitude((Math.asin(Math.min(1, Math.max(-1, wu))) * 180) / Math.PI);
-        if (hasGravity.current && hasMagnetic.current) setReady(true);
+        if (!overrideRef.current) basis.value = computeBasis(gravity.current, magnetic.current);
+        if (!readyRef.current && hasGravity.current && hasMagnetic.current) {
+            readyRef.current = true;
+            setReady(true);
+        }
     }
 
     useEffect(() => {
@@ -99,5 +111,5 @@ export function useDeviceOrientation(hasLocationPermission: boolean) {
         return () => sub.remove();
     }, []);
 
-    return { ...basis, declination, azimuth, altitude, ready };
+    return { basis, declination, ready };
 }

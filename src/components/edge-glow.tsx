@@ -10,6 +10,10 @@ const EDGE_PX = 14;        // how far a glow reaches in from each edge
 const TOGETHER_COLOR = "#F7B7C8";
 const FADE_MS = 1400;      // together glow fading in/out
 const PULSE_MS = 2200;     // half a breath: bright -> dim, then dim -> bright
+const HEARTBEAT_GAP_MS = 180; // lub... dub
+// three heartbeats (lub, dub), each softer, then quiet - felt, but never nagging
+const { Medium, Light, Soft } = Haptics.ImpactFeedbackStyle;
+const HEARTBEATS = [[Medium, Light], [Light, Soft], [Soft, Soft]];
 const FLASH_IN_MS = 300;   // "found it" flash: up…
 const FLASH_OUT_MS = 900;  // …and gently back down
 
@@ -38,7 +42,8 @@ function EdgeStrips({ id, color, opacity }: { id: string; color: string; opacity
     );
 }
 
-// Pink edge glow that breathes while you're both looking, with one success buzz.
+// Pink edge glow that breathes while you're both looking, with one success buzz, then
+// a few fading heartbeats, each when the glow is at its brightest.
 export function TogetherGlow({ visible }: { visible: boolean }) {
     const fade = useRef(new Animated.Value(0)).current;
     const pulse = useRef(new Animated.Value(1)).current;
@@ -58,7 +63,22 @@ export function TogetherGlow({ visible }: { visible: boolean }) {
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-        return () => breathing.stop();
+        // the loop is back at a bright peak every two half-breaths
+        let dub: ReturnType<typeof setTimeout> | undefined;
+        let beat = 0;
+        const heartbeat = setInterval(() => {
+            const [lubStyle, dubStyle] = HEARTBEATS[beat];
+            Haptics.impactAsync(lubStyle);
+            dub = setTimeout(() => Haptics.impactAsync(dubStyle), HEARTBEAT_GAP_MS);
+            beat += 1;
+            if (beat === HEARTBEATS.length) clearInterval(heartbeat);
+        }, PULSE_MS * 2);
+
+        return () => {
+            breathing.stop();
+            clearInterval(heartbeat);
+            clearTimeout(dub);
+        };
     }, [visible, fade, pulse]);
 
     return (

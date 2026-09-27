@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import type { Vec3 } from "./use-device-orientation";
+import type { Basis, Vec3 } from "./use-device-orientation";
 
 const SunCalc = require("suncalc");
-type SkyPoint = { bearing: number; altitude: number };
+export type SkyPoint = { bearing: number; altitude: number };
 // fraction: how much of the moon is lit (0 new - 1 full). sun: where the light comes
 // from (left out by the debug phases, which then use waxing to pick a side).
 export type MoonPhase = { fraction: number; waxing: boolean; sun?: SkyPoint };
@@ -12,9 +12,14 @@ export type SkyBody = Body & { name: "sun" | "moon" };
 // Degrees of sky shown top to bottom. x and y share one scale, so the sky isn't stretched.
 const FOV_VERTICAL = 70;
 
-export const focalPx = (height: number) => height / 2 / Math.tan((FOV_VERTICAL / 2) * (Math.PI / 180));
+// "worklet" (here and below): these also run on the UI thread, where the sky is drawn.
+export const focalPx = (height: number) => {
+    "worklet";
+    return height / 2 / Math.tan((FOV_VERTICAL / 2) * (Math.PI / 180));
+};
 
 function targetVector(azimuthDeg: number, altitudeDeg: number): Vec3 {
+    "worklet";
     const az = azimuthDeg * (Math.PI / 180);
     const alt = altitudeDeg * (Math.PI / 180);
     return { x: Math.sin(az) * Math.cos(alt), y: Math.cos(az) * Math.cos(alt), z: Math.sin(alt) };
@@ -25,6 +30,7 @@ function targetVector(azimuthDeg: number, altitudeDeg: number): Vec3 {
 // a point 1 degree from the moon towards the sun. null if the sun sits right on the
 // moon (only in debug mode, where the moon is moved there).
 export function towardsSun(moon: SkyPoint, sun: SkyPoint, at: (bearing: number, altitude: number) => { x: number; y: number }) {
+    "worklet";
     const m = targetVector(moon.bearing, moon.altitude);
     const s = targetVector(sun.bearing, sun.altitude);
     const along = m.x * s.x + m.y * s.y + m.z * s.z;
@@ -51,6 +57,7 @@ export function projectToScreen(
     targetBearing: number, targetAltitude: number,
     width: number, height: number
 ) {
+    "worklet";
     const t = targetVector(targetBearing - declination, targetAltitude);
     const dx = t.x * E.x + t.y * N.x + t.z * U.x;
     const dy = t.x * E.y + t.y * N.y + t.z * U.y;
@@ -93,9 +100,18 @@ export function projectToScreen(
     };
 }
 
+// projectToScreen with the phone's attitude and the screen filled in
+export function projector(basis: Basis, declination: number, width: number, height: number) {
+    "worklet";
+    return (bearing: number, altitude: number) =>
+        projectToScreen(basis.E, basis.N, basis.U, declination, bearing, altitude, width, height);
+}
+export type Project = ReturnType<typeof projector>;
+
 // The horizon always projects to a straight line, so "sky or ground" is a linear
 // test per screen point: aboveHorizon(x, y) > 0 is sky.
 export function groundPolygon(U: Vec3, width: number, height: number) {
+    "worklet";
     const up = { x: -U.x, y: -U.y, z: U.z }; // world up, in camera coords
     const kx = focalPx(height);
     const ky = kx;
