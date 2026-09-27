@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaFrame } from "react-native-safe-area-context";
 import {
-    Canvas, Circle, DashPathEffect, Group, LinearGradient, Path, RadialGradient, Rect, Skia, Text, useFont, vec, type SkFont,
+    BlurMask, Canvas, Circle, DashPathEffect, Group, LinearGradient, Path, RadialGradient, Rect, Skia, Text, useFont, vec, type SkFont,
+    type SkPath,
 } from "@shopify/react-native-skia";
 import {
-    useDerivedValue, useFrameCallback, useSharedValue, withRepeat, withSequence, withTiming, Easing, type SharedValue,
+    cancelAnimation, useDerivedValue, useFrameCallback, useSharedValue, withRepeat, withSequence, withTiming, Easing,
+    type SharedValue,
 } from "react-native-reanimated";
-import { groundPolygon, projector, towardsSun, type MoonPhase, type SkyBody } from "@/hooks/use-sky-bodies";
+import { degreesApart, focalPx, groundPolygon, pointAlong, projector, towardsSun, type MoonPhase, type SkyBody, type SkyPoint } from "@/hooks/use-sky-bodies";
 import { lerpVec, normalize, type Basis, type Vec3 } from "@/hooks/use-device-orientation";
 import { skyColors } from "@/lib/sky-colors";
 import { COLORS as THEME, FRAME } from "@/lib/theme";
@@ -21,6 +23,8 @@ type Props = {
     declination: number;
     // which way (compass bearing) your special someone is, and how far; null = unknown
     partner: { bearing: number; km: number } | null;
+    // the sun/moon the line from their light goes to; together = you're both looking
+    link: { to: SkyBody["name"]; together: boolean } | null;
 };
 
 const CARDINALS = [
@@ -225,7 +229,121 @@ function PartnerMarker({ sky, bearing, km, font, scale }: {
     );
 }
 
-export function SkyScene({ bodies, sunAltitude, basis, declination, partner }: Props) {
+// Their gaze: a soft pink line from their light on your horizon, across the sky to the
+// edge of the sun/moon's glow. It grows out from its middle when it appears and shrinks
+// back into it when it goes. While you're both looking it brightens, and a small light travels along it.
+// Drawn after the ground: the part below your horizon stays faintly visible.
+const LINK_STEPS = 48;           // points along the line
+const LINK_OPACITY = { alone: 0.3, together: 0.65 };
+const LINK_UNDERGROUND = 0.35;   // how visible the part below the horizon is, compared to above
+const LINK_FADE_MS = 800;
+const LINK_GROW_MS = 1800;
+const LINK_SHRINK_MS = 1100;
+const LINK_STOP_SHORT = 0.6;   // ends this share of the body's glow radius away from its centre
+const LINK_TRAVEL_MS = 2600;     // one trip of the travelling light
+
+function PartnerLink({ sky, from, to, together, ground, scale }: {
+    sky: SkyView;
+    from: SkyPoint;
+    to: (SkyPoint & { glow: number }) | null; // null = no line (shrinks away); glow = its radius, px
+    together: boolean;
+    ground: SharedValue<SkPath>; // the ground's outline, to tell above from below the horizon
+    scale: number;
+}) {
+    const { basis, declination, width, height } = sky;
+    // keeps the last target while shrinking away
+    const [target, setTarget] = useState(to);
+    useEffect(() => {
+        if (to) setTarget(to);
+    }, [to?.bearing, to?.altitude]);
+
+    const grown = useSharedValue(0); // 0 = nothing, 1 = the whole line
+    useEffect(() => {
+        grown.value = withTiming(to ? 1 : 0, { duration: to ? LINK_GROW_MS : LINK_SHRINK_MS, easing: Easing.inOut(Easing.cubic) });
+    }, [!!to, grown]);
+    // from the middle out, both ways
+    const start = useDerivedValue(() => 0.5 - grown.value / 2);
+    const end = useDerivedValue(() => 0.5 + grown.value / 2);
+
+    // where along the path to stop: at the edge of the body's glow, not its centre
+    const pxPerDegree = (focalPx(height) * Math.PI) / 180;
+    const stopShortDeg = target ? (target.glow * LINK_STOP_SHORT) / pxPerDegree : 0;
+    const reach = (a: SkyPoint, b: SkyPoint) => {
+        "worklet";
+        return Math.max(0, 1 - stopShortDeg / Math.max(degreesApart(a, b), 1e-3));
+    };
+
+    const path = useDerivedValue(() => {
+        const p = Skia.Path.Make();
+        if (!target) return p;
+        const at = projector(basis.value, declination, width, height);
+        const last = reach(from, target);
+        let drawing = false;
+        for (let i = 0; i <= LINK_STEPS; i++) {
+            const q = pointAlong(from, target, (i / LINK_STEPS) * last);
+            const s = at(q.bearing, q.altitude);
+            // split where it goes behind you, like the grid
+            if (s.angleFromCenter >= IN_FRONT_DEG) drawing = false;
+            else if (drawing) p.lineTo(s.x, s.y);
+            else {
+                p.moveTo(s.x, s.y);
+                drawing = true;
+            }
+        }
+        return p;
+    }, [declination, width, height, from, target, stopShortDeg]);
+
+    const opacity = useSharedValue(LINK_OPACITY.alone);
+    useEffect(() => {
+        opacity.value = withTiming(together ? LINK_OPACITY.together : LINK_OPACITY.alone, { duration: LINK_FADE_MS });
+    }, [together, opacity]);
+    const underground = useDerivedValue(() => opacity.value * LINK_UNDERGROUND);
+
+    const travel = useSharedValue(0);
+    const travelling = together && !!to;
+    useEffect(() => {
+        if (!travelling) {
+            cancelAnimation(travel);
+            travel.value = 0;
+            return;
+        }
+        travel.value = withRepeat(withTiming(1, { duration: LINK_TRAVEL_MS, easing: Easing.inOut(Easing.quad) }), -1, false);
+        return () => cancelAnimation(travel);
+    }, [travelling, travel]);
+    const spark = useDerivedValue(() => {
+        if (!target) return { c: vec(0, 0), opacity: 0 };
+        const t = travel.value;
+        const q = pointAlong(from, target, t * reach(from, target));
+        const s = projector(basis.value, declination, width, height)(q.bearing, q.altitude);
+        // only once the line has fully grown; fades in leaving them, out arriving
+        const shown = travelling && grown.value === 1 && s.angleFromCenter < IN_FRONT_DEG ? Math.sin(Math.PI * t) : 0;
+        return { c: vec(s.x, s.y), opacity: shown };
+    }, [declination, width, height, from, target, travelling, stopShortDeg]);
+    const sparkC = useDerivedValue(() => spark.value.c);
+    const sparkOpacity = useDerivedValue(() => spark.value.opacity);
+
+    if (!target) return null;
+    const line = (lineOpacity: SharedValue<number>) => (
+        <Path path={path} start={start} end={end} style="stroke" strokeWidth={1.5 * scale} strokeCap="round" color={THEME.together} opacity={lineOpacity}>
+            <BlurMask blur={2 * scale} style="solid" />
+        </Path>
+    );
+    return (
+        <>
+            {/* above the horizon */}
+            <Group clip={ground} invertClip>
+                {line(opacity)}
+                <Circle c={sparkC} r={3 * scale} color="#FFF4F7" opacity={sparkOpacity}>
+                    <BlurMask blur={3 * scale} style="solid" />
+                </Circle>
+            </Group>
+            {/* below it, faintly */}
+            <Group clip={ground}>{line(underground)}</Group>
+        </>
+    );
+}
+
+export function SkyScene({ bodies, sunAltitude, basis, declination, partner, link }: Props) {
     const palette = skyColors(sunAltitude);
     const { width, height } = useSafeAreaFrame();
     // The sky always shows the same degrees top to bottom, so on a taller screen (tablet)
@@ -291,6 +409,7 @@ export function SkyScene({ bodies, sunAltitude, basis, declination, partner }: P
     }, [declination, width, height]);
 
     const night = Math.min(1, Math.max(0, sunAltitude / FULL_NIGHT_SUN_ALTITUDE));
+    const linkBody = link ? bodies.find((b) => b.name === link.to) : undefined;
 
     return (
         // full screen, so the sky maths match the screen
@@ -321,6 +440,16 @@ export function SkyScene({ bodies, sunAltitude, basis, declination, partner }: P
                 </Path>
                 <Path path={horizonLine} style="stroke" strokeWidth={1} color={palette.labels} opacity={0.35} />
 
+                {partner && (
+                    <PartnerLink
+                        sky={sky} ground={groundPath} scale={k} together={!!link?.together}
+                        from={{ bearing: partner.bearing, altitude: MARKER_ALTITUDE }}
+                        to={linkBody ? {
+                            bearing: linkBody.bearing, altitude: linkBody.altitude,
+                            glow: (linkBody.name === "sun" ? SUN_GLOW : MOON_GLOW) * k,
+                        } : null}
+                    />
+                )}
                 {partner && <PartnerMarker sky={sky} bearing={partner.bearing} km={partner.km} font={smallFont} scale={k} />}
 
                 {bodies.filter((body) => body.altitude < 0).map((body) => (

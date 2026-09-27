@@ -20,6 +20,11 @@ export function menuIcon(width: number, height: number) {
     };
 }
 
+// a very faint line between sections
+export function MenuDivider() {
+    return <View style={{ height: 1, backgroundColor: "rgba(255, 255, 255, 0.07)" }} />;
+}
+
 export function MenuHeading({ children, color = COLORS.muted }: { children: ReactNode; color?: string }) {
     return (
         <Text style={{ fontFamily: FONTS.medium, color, fontSize: 12, textTransform: "uppercase", letterSpacing: 1.5 }}>

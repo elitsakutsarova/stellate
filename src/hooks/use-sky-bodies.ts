@@ -25,6 +25,31 @@ function targetVector(azimuthDeg: number, altitudeDeg: number): Vec3 {
     return { x: Math.sin(az) * Math.cos(alt), y: Math.cos(az) * Math.cos(alt), z: Math.sin(alt) };
 }
 
+// degrees across the sky between two spots
+export function degreesApart(a: SkyPoint, b: SkyPoint) {
+    "worklet";
+    const u = targetVector(a.bearing, a.altitude);
+    const v = targetVector(b.bearing, b.altitude);
+    return (Math.acos(Math.min(1, Math.max(-1, u.x * v.x + u.y * v.y + u.z * v.z))) * 180) / Math.PI;
+}
+
+// The point a share `t` (0-1) of the way from a to b, along the shortest path across
+// the sky (a great circle), so lines between two spots curve like the sky does.
+export function pointAlong(a: SkyPoint, b: SkyPoint, t: number): SkyPoint {
+    "worklet";
+    const u = targetVector(a.bearing, a.altitude);
+    const v = targetVector(b.bearing, b.altitude);
+    const angle = (degreesApart(a, b) * Math.PI) / 180;
+    if (angle < 1e-4) return a;
+    const wa = Math.sin((1 - t) * angle) / Math.sin(angle);
+    const wb = Math.sin(t * angle) / Math.sin(angle);
+    const p = { x: wa * u.x + wb * v.x, y: wa * u.y + wb * v.y, z: wa * u.z + wb * v.z };
+    return {
+        bearing: (Math.atan2(p.x, p.y) * 180) / Math.PI,
+        altitude: (Math.asin(Math.min(1, Math.max(-1, p.z))) * 180) / Math.PI,
+    };
+}
+
 // The screen angle (degrees, 0 = right, clockwise) the moon's lit side faces: towards
 // the sun, along the sky - so it's right however the phone is held. Found by projecting
 // a point 1 degree from the moon towards the sun. null if the sun sits right on the

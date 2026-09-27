@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Easing, View, Text, Pressable, StyleSheet } from "react-native";
+import { Animated, Easing, View, Pressable, StyleSheet } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,7 +19,8 @@ import { formatDuration, useTimeTogether } from "@/hooks/use-time-together";
 import { SkyViewfinder } from "@/components/sky-viewfinder";
 import { SkyScene } from "@/components/sky-scene";
 import { FoundFlash, TogetherGlow } from "@/components/edge-glow";
-import { MenuHeading, MenuToggle, SideMenu } from "@/components/side-menu";
+import { MenuDivider, MenuHeading, MenuToggle, SideMenu } from "@/components/side-menu";
+import { DebugMenu } from "@/components/debug-menu";
 import { BottomSheet } from "@/components/bottom-sheet";
 import { CodeRow } from "@/components/code-row";
 import { Body, Button, MAX_TEXT_WIDTH, NightBackground, Pill, Title, WaitingLine } from "@/components/ui";
@@ -29,14 +30,6 @@ import { skyColors, SKY_PRESETS, type SkyPreset } from "@/lib/sky-colors";
 
 const NIGHT_UNTIL_KNOWN = -20;
 const GLIDE_MS = 1200;
-// Debug only: pretend your special someone is in one of these places.
-const DEBUG_PARTNERS = [
-    null,
-    { label: "Paris", latitude: 48.86, longitude: 2.35 },
-    { label: "New York", latitude: 40.71, longitude: -74.01 },
-    { label: "Tokyo", latitude: 35.68, longitude: 139.69 },
-    { label: "Sydney", latitude: -33.87, longitude: 151.21 },
-];
 const PARTNER_NEARBY_KM = 20; // closer than this, a direction means little
 const MAX_SKY_WAIT_MS = 4000; // show the sky anyway after this (e.g. a simulator has no sensors)
 const SKY_FADE_MS = 500;
@@ -171,10 +164,7 @@ export default function Sky() {
     const palette = skyColors(sunAltitude);
 
     // which way your special someone is - not shown if they're right nearby
-    const [debugPartner, setDebugPartner] = useState(0);
-    const fakePartner = __DEV__ ? DEBUG_PARTNERS[debugPartner] : null;
-    const nextPartner = DEBUG_PARTNERS[(debugPartner + 1) % DEBUG_PARTNERS.length];
-    const partnerLocation = fakePartner ?? (partnerLeft ? null : pair?.partnerLocation);
+    const partnerLocation = partnerLeft ? null : pair?.partnerLocation;
     const partnerDirection = coords && partnerLocation ? directionTo(coords, partnerLocation) : null;
     const partner = partnerDirection && partnerDirection.km >= PARTNER_NEARBY_KM ? partnerDirection : null;
 
@@ -187,6 +177,10 @@ export default function Sky() {
     // both looking at the sky - the same body or not
     const together = !partnerLeft && !!myLooking && !!partnerLooking;
     const timeTogether = useTimeTogether(pairId, together);
+
+    // While they look up, a line joins their light to the sky: to what you're looking at,
+    // if you are (so together it lands on your sun/moon), otherwise to what they see.
+    const link = partnerLooking ? { to: myLooking ?? partnerLooking, together } : null;
 
     useLookUpAlerts({ enabled: notifications.lookUp, pairId, deviceId, myLooking, partnerOnline });
 
@@ -230,7 +224,10 @@ export default function Sky() {
             <Animated.View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { opacity: skyOpacity }]}>
                 {skyReady && (
                     <>
-                        <SkyScene bodies={bodies} sunAltitude={sunAltitude} basis={sensors.basis} declination={declination} partner={partner} />
+                        <SkyScene
+                            bodies={bodies} sunAltitude={sunAltitude} basis={sensors.basis} declination={declination}
+                            partner={partner} link={link}
+                        />
                         <SkyViewfinder bodies={bodies} active={active} basis={sensors.basis} declination={declination} onLookingChange={handleLookingChange} />
                     </>
                 )}
@@ -244,38 +241,22 @@ export default function Sky() {
                 </View>
             )}
 
-            {__DEV__ && bodies.length > 0 && (
-                <Pressable
-                    onPress={() => setDebugTarget(nextDebugTarget)}
-                    style={{ position: "absolute", top: insets.top + 84, right: 12, zIndex: 2 }}
-                >
-                    <Pill>{nextDebugTarget ? `Debug: look at ${nextDebugTarget}` : "Debug: sensors"}</Pill>
-                </Pressable>
-            )}
-            {__DEV__ && (
-                <Pressable
-                    onPress={() => setDebugSky(nextDebugSky)}
-                    style={{ position: "absolute", top: insets.top + 120, right: 12, zIndex: 2 }}
-                >
-                    <Pill>{`Debug sky: ${debugSky ?? "real"} -> ${nextDebugSky ?? "real"}`}</Pill>
-                </Pressable>
-            )}
-            {__DEV__ && (
-                <Pressable
-                    onPress={() => setDebugPhase((debugPhase + 1) % DEBUG_PHASES.length)}
-                    style={{ position: "absolute", top: insets.top + 156, right: 12, zIndex: 2 }}
-                >
-                    <Pill>{`Debug moon: ${phasePreset?.label ?? "real"} -> ${nextPhase?.label ?? "real"}`}</Pill>
-                </Pressable>
-            )}
-            {__DEV__ && (
-                <Pressable
-                    onPress={() => setDebugPartner((debugPartner + 1) % DEBUG_PARTNERS.length)}
-                    style={{ position: "absolute", top: insets.top + 192, right: 12, zIndex: 2 }}
-                >
-                    <Pill>{`Debug partner: ${fakePartner?.label ?? "real"} -> ${nextPartner?.label ?? "real"}`}</Pill>
-                </Pressable>
-            )}
+            <DebugMenu
+                top={insets.top + 8}
+                items={[
+                    ...(bodies.length > 0
+                        ? [{ label: nextDebugTarget ? `Look at ${nextDebugTarget}` : "Use sensors", onPress: () => setDebugTarget(nextDebugTarget) }]
+                        : []),
+                    { label: `Sky: ${debugSky ?? "real"} -> ${nextDebugSky ?? "real"}`, onPress: () => setDebugSky(nextDebugSky) },
+                    {
+                        label: `Moon: ${phasePreset?.label ?? "real"} -> ${nextPhase?.label ?? "real"}`,
+                        onPress: () => setDebugPhase((debugPhase + 1) % DEBUG_PHASES.length),
+                    },
+                    ...(notifications.supported
+                        ? [{ label: "Test reminder in 10s", onPress: () => sendTestReminder(active?.name ?? "sun") }]
+                        : []),
+                ]}
+            />
 
             {/* status card */}
             <View
@@ -314,12 +295,16 @@ export default function Sky() {
             </View>
 
             <SideMenu open={menuOpen} onOpenChange={setMenuOpen} background={palette.surface}>
-                <View style={{ gap: 36 }}>
+                {/* sections with a faint line and room between them */}
+                <View style={{ gap: 24 }}>
                     {pair && (
-                        <View style={{ gap: 12 }}>
-                            <MenuHeading color={palette.menuMuted}>Your connection</MenuHeading>
-                            <CodeRow code={pair.code} size={20} accent={palette.menuAccent} />
-                        </View>
+                        <>
+                            <View style={{ gap: 12 }}>
+                                <MenuHeading color={palette.menuMuted}>Your connection</MenuHeading>
+                                <CodeRow code={pair.code} size={20} accent={palette.menuAccent} />
+                            </View>
+                            <MenuDivider />
+                        </>
                     )}
 
                     <View style={{ gap: 12 }}>
@@ -331,6 +316,8 @@ export default function Sky() {
                             </Body>
                         </View>
                     </View>
+
+                    <MenuDivider />
 
                     <View style={{ gap: 16 }}>
                         <MenuHeading color={palette.menuMuted}>Notifications</MenuHeading>
@@ -352,11 +339,6 @@ export default function Sky() {
                             <Body style={{ color: palette.menuMuted, fontSize: 13, lineHeight: 18 }}>
                                 Not available in Expo Go on Android - needs a development build.
                             </Body>
-                        )}
-                        {__DEV__ && notifications.supported && (
-                            <Pressable onPress={() => sendTestReminder(active?.name ?? "sun")}>
-                                <Body style={{ color: COLORS.link, fontSize: 14 }}>Debug: test reminder in 10s</Body>
-                            </Pressable>
                         )}
                     </View>
                 </View>
