@@ -43,3 +43,6 @@ example
 # generated native folders
 /ios
 /android
+
+# Firebase config - kept out of git; EAS builds get it from an EAS file variable
+google-services.json
