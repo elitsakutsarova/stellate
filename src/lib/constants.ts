@@ -7,9 +7,7 @@ export const NOTIFICATION_KEYS = {
 } as const;
 export type NotificationKind = keyof typeof NOTIFICATION_KEYS;
 
-// Android notification channels - the server names one in each push.
 export const CHANNELS = { reminders: "sky-reminders", lookUp: "look-up" } as const;
 
-// Shared by the app and the server, so they can't disagree on the name.
 export const pairChannel = (pairId: string) => `pair-${pairId}`;
 export const PAIR_CHANGED_EVENT = "pair-changed";

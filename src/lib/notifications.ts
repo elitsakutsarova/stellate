@@ -7,8 +7,6 @@ import type { SkyBody } from "@/hooks/use-sky-bodies";
 
 type BodyName = SkyBody["name"];
 
-// Expo Go on Android (SDK 53+) throws as soon as expo-notifications is imported,
-// so it's only loaded where it works; elsewhere these functions do nothing.
 export const notificationsSupported = !(
     Platform.OS === "android" && Constants.executionEnvironment === ExecutionEnvironment.StoreClient
 );
@@ -16,7 +14,6 @@ const Notifications: typeof NotificationsModule | null = notificationsSupported
     ? require("expo-notifications")
     : null;
 
-// show notifications while the app is open too (on Android, sound off hides the banner)
 Notifications?.setNotificationHandler({
     handleNotification: async () => ({
         shouldShowBanner: true,
@@ -43,8 +40,6 @@ const isUp = (body: BodyName, date: Date, where: Coords) =>
 const bothSee = (body: BodyName, date: Date, me: Coords, them: Coords) => isUp(body, date, me) && isUp(body, date, them);
 const allowedHour = (date: Date) => date.getHours() >= EARLIEST_HOUR && date.getHours() < LATEST_HOUR;
 
-// When "up for both of us, at a decent hour" starts, over the next few days -
-// at most one per day, and not if it's already true right now.
 export function findSharedTimes(body: BodyName, me: Coords, them: Coords, from = new Date()): Date[] {
     const stepMs = STEP_MINUTES * 60 * 1000;
     const end = from.getTime() + DAYS_AHEAD * 24 * 60 * 60 * 1000;
@@ -65,7 +60,6 @@ export function findSharedTimes(body: BodyName, me: Coords, them: Coords, from =
     return times;
 }
 
-// Android needs a channel before it shows the permission prompt or notifications.
 async function ensureChannel() {
     if (!Notifications || Platform.OS !== "android") return;
     await Notifications.setNotificationChannelAsync(CHANNELS.reminders, {
@@ -78,7 +72,6 @@ async function ensureChannel() {
     });
 }
 
-// null where push isn't possible (Expo Go, simulators)
 export async function getPushToken(): Promise<string | null> {
     if (!Notifications) return null;
     try {
@@ -92,7 +85,6 @@ export async function getPushToken(): Promise<string | null> {
     }
 }
 
-// canAskAgain false = the OS won't prompt again (Android: after 2 "no"s, iOS: 1)
 export async function getNotificationPermission() {
     if (!Notifications) return { granted: false, canAskAgain: false };
     const { status, canAskAgain } = await Notifications.getPermissionsAsync();
@@ -142,7 +134,7 @@ export const cancelSkyReminders = () =>
         await Notifications?.cancelAllScheduledNotificationsAsync();
     });
 
-// Debug only: a real reminder in 10 seconds.
+// Debug only
 export const sendTestReminder = () =>
     serialized(async () => {
         if (!Notifications) return;

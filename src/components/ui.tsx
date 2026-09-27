@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import { useEffect, useRef, type ReactNode } from "react";
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import Svg, { Defs, LinearGradient, RadialGradient, Rect, Stop } from "react-native-svg";
 import { COLORS, FONTS, RADIUS } from "@/lib/theme";
 
@@ -104,5 +104,27 @@ export function Pill({ children }: { children: ReactNode }) {
         >
             {children}
         </Text>
+    );
+}
+
+// A softly pulsing dot next to a line of text, for waiting moments.
+export function WaitingLine({ children }: { children: ReactNode }) {
+    const pulse = useRef(new Animated.Value(0.3)).current;
+    useEffect(() => {
+        const loop = Animated.loop(
+            Animated.sequence([
+                Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: true }),
+                Animated.timing(pulse, { toValue: 0.3, duration: 900, useNativeDriver: true }),
+            ])
+        );
+        loop.start();
+        return () => loop.stop();
+    }, [pulse]);
+
+    return (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <Animated.View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.accent, opacity: pulse }} />
+            <Text style={{ fontFamily: FONTS.regular, fontSize: 14, color: COLORS.muted }}>{children}</Text>
+        </View>
     );
 }

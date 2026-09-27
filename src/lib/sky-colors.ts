@@ -1,4 +1,4 @@
-// The sky's colours by the sun's altitude, blended between these keyframes.
+// the sky's colours by the sun's altitude
 
 type Rgba = [number, number, number, number];
 
@@ -28,15 +28,14 @@ const hexToRgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i +
 const mix = (a: number, b: number, t: number) => a + (b - a) * t;
 const mixRgb = (x: number[], y: number[], t: number) => x.map((v, i) => mix(v, y[i], t));
 const css = (rgb: number[]) => `rgb(${rgb.map(Math.round).join(", ")})`;
-// Panels: the original look at night, pulled towards deep blue by day.
+
 const DEEP = hexToRgb("#05060F");
 const PANEL_BLUE = hexToRgb("#1B1F4B");
 const NIGHT_ACCENT = hexToRgb("#E9C6FF"), DAY_ACCENT = hexToRgb("#9FD0F2");
 const NIGHT_MUTED = hexToRgb("#8C93B8"), DAY_MUTED = hexToRgb("#9DB2D6");
 
-// Sky gradient shape from the horizon (0) to 60 degrees (1): an exponential ease,
-// so the light colour hugs the horizon and fades out with no visible edge.
-const SHARPNESS = 0.25; // smaller = thinner light band
+// sky gradient shape from the horizon
+const SHARPNESS = 0.25;
 const ease = (o: number) => (1 - Math.exp(-o / SHARPNESS)) / (1 - Math.exp(-1 / SHARPNESS));
 const STOP_OFFSETS = [0, 0.03, 0.07, 0.12, 0.18, 0.25, 0.35, 0.5, 0.7, 1];
 
@@ -50,7 +49,7 @@ export function skyColors(sunAltitude: number) {
     const zenith = blend("zenith");
     const horizon = blend("horizon");
     const card = mixRgb(a.card, b.card, t);
-    const day = mix(a.daylight, b.daylight, t); // blends, so panels change smoothly too
+    const day = mix(a.daylight, b.daylight, t); 
     return {
         zenith: css(zenith),
         horizon: css(horizon),

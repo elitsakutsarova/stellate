@@ -39,19 +39,26 @@ export function useDeviceOrientation(hasLocationPermission: boolean) {
     const [azimuth, setAzimuth] = useState(0);
     const [altitude, setAltitude] = useState(0);
     const [declination, setDeclination] = useState(0);
+    const [ready, setReady] = useState(false); // both sensors have given a first reading
 
     const gravity = useRef<Vec3>({ x: 0, y: 0, z: 1 });
     const magnetic = useRef<Vec3>({ x: 0, y: 1, z: -1 });
     const declinationRef = useRef(0);
+    // The made-up starts above are only placeholders: each sensor's first reading
+    // replaces them outright, or the sky would visibly swing from them into place.
+    const hasGravity = useRef(false);
+    const hasMagnetic = useRef(false);
 
     useEffect(() => {
         if (!hasLocationPermission) return;
         let sub: Location.LocationSubscription | undefined;
+        let first = true;
         (async () => {
             sub = await Location.watchHeadingAsync((h) => {
                 if (h.trueHeading < 0) return;
                 const wanted = ((h.trueHeading - h.magHeading + 540) % 360) - 180;
-                declinationRef.current += (wanted - declinationRef.current) * 0.1;
+                declinationRef.current = first ? wanted : declinationRef.current + (wanted - declinationRef.current) * 0.1;
+                first = false;
                 setDeclination(declinationRef.current);
             });
         })();
@@ -66,13 +73,16 @@ export function useDeviceOrientation(hasLocationPermission: boolean) {
         const magAz = ((Math.atan2(we, wn) * 180) / Math.PI + 360) % 360;
         setAzimuth((magAz + declinationRef.current + 360) % 360);
         setAltitude((Math.asin(Math.min(1, Math.max(-1, wu))) * 180) / Math.PI);
+        if (hasGravity.current && hasMagnetic.current) setReady(true);
     }
 
     useEffect(() => {
         Accelerometer.setUpdateInterval(SENSOR_INTERVAL_MS);
         const sub = Accelerometer.addListener(({ x, y, z }) => {
             // The accelerometer reports gravity (pointing down); negate so it means "up".
-            gravity.current = lerpVec(gravity.current, { x: -x, y: -y, z: -z }, GRAVITY_SMOOTHING);
+            const up = { x: -x, y: -y, z: -z };
+            gravity.current = hasGravity.current ? lerpVec(gravity.current, up, GRAVITY_SMOOTHING) : up;
+            hasGravity.current = true;
             recompute();
         });
         return () => sub.remove();
@@ -83,10 +93,11 @@ export function useDeviceOrientation(hasLocationPermission: boolean) {
         const sub = Magnetometer.addListener(({ x, y, z }) => {
             // Noisier than the accelerometer, so smoothed harder. No recompute() here - the
             // accelerometer already recomputes at the same rate.
-            magnetic.current = lerpVec(magnetic.current, { x, y, z }, MAGNETIC_SMOOTHING);
+            magnetic.current = hasMagnetic.current ? lerpVec(magnetic.current, { x, y, z }, MAGNETIC_SMOOTHING) : { x, y, z };
+            hasMagnetic.current = true;
         });
         return () => sub.remove();
     }, []);
 
-    return { ...basis, declination, azimuth, altitude };
+    return { ...basis, declination, azimuth, altitude, ready };
 }

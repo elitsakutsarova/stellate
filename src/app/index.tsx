@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert, Animated, BackHandler, Easing, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from "react-native";
@@ -16,7 +16,7 @@ import { CodeRow } from "@/components/code-row";
 import { ARRANGEMENTS, SunMoon } from "@/components/sun-moon";
 import { BottomSheet } from "@/components/bottom-sheet";
 import { useLaunch } from "@/components/launch-screen";
-import { Body, Button, glass, MAX_TEXT_WIDTH, NightBackground, Title } from "@/components/ui";
+import { Body, Button, glass, MAX_TEXT_WIDTH, NightBackground, Title, WaitingLine } from "@/components/ui";
 
 type Step = "welcome" | "connect";
 type Pair = { id: string; code: string };
@@ -380,27 +380,6 @@ function OrDivider() {
       <View style={line} />
       <Text style={{ fontFamily: FONTS.light, fontSize: 13, color: COLORS.muted }}>OR</Text>
       <View style={line} />
-    </View>
-  );
-}
-
-function WaitingLine({ children }: { children: ReactNode }) {
-  const pulse = useRef(new Animated.Value(0.3)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.3, duration: 900, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [pulse]);
-
-  return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-      <Animated.View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.accent, opacity: pulse }} />
-      <Text style={{ fontFamily: FONTS.regular, fontSize: 14, color: COLORS.muted }}>{children}</Text>
     </View>
   );
 }

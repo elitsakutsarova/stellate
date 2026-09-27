@@ -1,7 +1,6 @@
 import Constants from "expo-constants";
 
-// In development, reuse the laptop's IP that Metro was reached on, so the API URL
-// never needs updating when switching networks. EXPO_PUBLIC_API_URL is for real builds.
+// will be the same regardless of the network.
 const SERVER_PORT = 3000;
 const devHost = Constants.expoConfig?.hostUri?.split(":")[0];
 const API_URL = __DEV__ && devHost ? `http://${devHost}:${SERVER_PORT}` : (process.env.EXPO_PUBLIC_API_URL as string);
@@ -56,7 +55,6 @@ export const getPairStatus = (pairId: string, deviceId: string) =>
 export const setLocation = (pairId: string, deviceId: string, coords: Coords) =>
     request<{ ok: true }>(`/api/pairs/${pairId}/location`, { deviceId, ...coords });
 
-// null = the "looks up" toggle is off
 export const setPushToken = (pairId: string, deviceId: string, token: string | null) =>
     request<{ ok: true }>(`/api/pairs/${pairId}/push-token`, { deviceId, token });
 

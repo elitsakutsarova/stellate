@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Easing, View, Text, Pressable } from "react-native";
+import { Animated, Easing, View, Text, Pressable, StyleSheet } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,12 +20,14 @@ import { FoundFlash, TogetherGlow } from "@/components/edge-glow";
 import { MenuHeading, MenuToggle, SideMenu } from "@/components/side-menu";
 import { BottomSheet } from "@/components/bottom-sheet";
 import { CodeRow } from "@/components/code-row";
-import { Body, Button, MAX_TEXT_WIDTH, Pill, Title } from "@/components/ui";
+import { Body, Button, MAX_TEXT_WIDTH, NightBackground, Pill, Title, WaitingLine } from "@/components/ui";
 import { COLORS, fitScale } from "@/lib/theme";
 import { skyColors, SKY_PRESETS, type SkyPreset } from "@/lib/sky-colors";
 
 const NIGHT_UNTIL_KNOWN = -20;
 const GLIDE_MS = 1200;
+const MAX_SKY_WAIT_MS = 4000; // show the sky anyway after this (e.g. a simulator has no sensors)
+const SKY_FADE_MS = 500;
 
 // Eases towards `target` instead of jumping, so the sky's colours change smoothly.
 // The first known value is taken straight away.
@@ -91,6 +93,25 @@ export default function Sky() {
     const sensors = useDeviceOrientation(!!coords);
     const { declination } = sensors;
 
+    // The sky waits for the sensors' first readings and the location (or its error),
+    // so it appears already in place instead of swinging there.
+    const [skyReady, setSkyReady] = useState(false);
+    useEffect(() => {
+        if (sensors.ready && (coords || locationError)) setSkyReady(true);
+    }, [sensors.ready, coords, locationError]);
+    useEffect(() => {
+        const timer = setTimeout(() => setSkyReady(true), MAX_SKY_WAIT_MS);
+        return () => clearTimeout(timer);
+    }, []);
+
+    // the sky fades in over the "finding" message, which then goes
+    const skyOpacity = useRef(new Animated.Value(0)).current;
+    const [finding, setFinding] = useState(true);
+    useEffect(() => {
+        if (!skyReady) return;
+        Animated.timing(skyOpacity, { toValue: 1, duration: SKY_FADE_MS, useNativeDriver: true }).start(() => setFinding(false));
+    }, [skyReady, skyOpacity]);
+
     // Debug only: pretend the phone points straight at the sun or moon.
     const [debugTarget, setDebugTarget] = useState<Looking>(null);
     const debugBody = __DEV__ ? bodies.find((b) => b.name === debugTarget) : undefined;
@@ -148,8 +169,21 @@ export default function Sky() {
             <Stack.Screen options={{ headerShown: false }} />
             <StatusBar style="light" />
 
-            <SkyScene bodies={bodies} sunAltitude={sunAltitude} E={E} N={N} U={U} declination={declination} />
-            <SkyViewfinder bodies={bodies} active={active} E={E} N={N} U={U} declination={declination} onLookingChange={handleLookingChange} />
+            {finding && (
+                <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}>
+                    <NightBackground glowY={0.5} />
+                    <WaitingLine>Finding your sky...</WaitingLine>
+                </View>
+            )}
+
+            <Animated.View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { opacity: skyOpacity }]}>
+                {skyReady && (
+                    <>
+                        <SkyScene bodies={bodies} sunAltitude={sunAltitude} E={E} N={N} U={U} declination={declination} />
+                        <SkyViewfinder bodies={bodies} active={active} E={E} N={N} U={U} declination={declination} onLookingChange={handleLookingChange} />
+                    </>
+                )}
+            </Animated.View>
             <FoundFlash looking={myLooking} />
             <TogetherGlow visible={together} />
 
