@@ -8,8 +8,7 @@ import { usePairStore } from "@/store/use-pair-store";
 import { LaunchScreen, useLaunch } from "@/components/launch-screen";
 import { COLORS, FONT_FILES } from "@/lib/theme";
 
-// Keep the phone's still splash up until our animated one (LaunchScreen) is
-// on screen to take over - it hides the native one itself.
+// LaunchScreen hides the native splash once it's on screen.
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -22,14 +21,12 @@ export default function RootLayout() {
     hydrate();
   }, [hydrate]);
 
-  // if a font fails to load, carry on with the system font rather than hang
   const ready = isHydrated && (fontsLoaded || !!fontError);
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.night }}>
       <StatusBar style="light" />
-      {/* the app renders underneath as soon as it's ready (so it can already
-          go to the right screen), hidden by the launch screen until it fades */}
+      {/* rendered underneath the launch screen as soon as it's ready */}
       {ready && (
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: COLORS.night }, animation: "fade" }} />
       )}

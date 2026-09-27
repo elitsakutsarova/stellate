@@ -3,9 +3,6 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, type StyleProp, type Te
 import Svg, { Defs, LinearGradient, RadialGradient, Rect, Stop } from "react-native-svg";
 import { COLORS, FONTS, RADIUS } from "@/lib/theme";
 
-// Full-screen night sky: the same gradient as the sky screen, with a soft
-// lavender glow (like the light behind the sun/moon in the designs).
-// glowY: where the glow sits, as a fraction of the screen height.
 export function NightBackground({ glowY = 0.35 }: { glowY?: number }) {
     return (
         <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -26,14 +23,10 @@ export function NightBackground({ glowY = 0.35 }: { glowY?: number }) {
     );
 }
 
-// Longest a line of text may get (px) - like max-width in CSS, so on a
-// tablet a sentence stays a readable block instead of one endless line.
+// like max-width in CSS, so text stays a readable block on tablets
 export const MAX_TEXT_WIDTH = 440;
 
-// No orphans (a single word alone on the last line):
-// - glues the last two words together with a non-breaking space, and
-// - asks each platform for balanced line breaks (Android: "balanced",
-//   iOS: "push-out", which avoids orphans), like text-wrap: pretty in CSS.
+// No orphans: glue the last two words, and ask each platform for balanced line breaks.
 export const noOrphan = (text: string) => text.replace(/ (\S+)$/, "\u00A0$1");
 const tidy = (children: ReactNode) => (typeof children === "string" ? noOrphan(children) : children);
 const pretty = { textBreakStrategy: "balanced", lineBreakStrategyIOS: "push-out" } as const;
@@ -54,10 +47,6 @@ export function Body({ children, style }: { children: ReactNode; style?: StylePr
     );
 }
 
-// "primary": solid lavender - the one main action on a screen.
-// "glass": see-through - everything else.
-// "danger": see-through with red text - for leaving/deleting things.
-// "ghost": just text, smaller - the quiet way out (Cancel, Not now).
 export function Button({ label, onPress, variant = "primary", busy, disabled, style, accent = COLORS.accent }: {
     label: string;
     onPress: () => void;
@@ -97,8 +86,7 @@ export function Button({ label, onPress, variant = "primary", busy, disabled, st
     );
 }
 
-// The frosted look for panels, inputs and cards.
-// (`satisfies`, not a type annotation, so it also fits text inputs.)
+// `satisfies`, not a type annotation, so it also fits text inputs
 export const glass = {
     backgroundColor: COLORS.glass,
     borderWidth: 1,
@@ -106,7 +94,6 @@ export const glass = {
     borderRadius: RADIUS,
 } satisfies ViewStyle;
 
-// A small rounded glass label, e.g. "Reconnecting...".
 export function Pill({ children }: { children: ReactNode }) {
     return (
         <Text

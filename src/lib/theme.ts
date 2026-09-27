@@ -1,8 +1,4 @@
-// One place for the app's look, so every screen matches. The night palette
-// is the same one the sky screen already uses; lavender (from the Figma
-// frames) is the accent.
 export const COLORS = {
-    // backgrounds, top -> bottom
     night: "#0A0F2C",
     nightMid: "#1B1F4B",
     nightLow: "#3A2E5C",
@@ -18,16 +14,13 @@ export const COLORS = {
     accent: "#E9C6FF",    // primary buttons
     onAccent: "#1B1F4B",  // text on primary buttons
 
-    // "glass": see-through white with a thin light edge
     glass: "rgba(255, 255, 255, 0.08)",
     glassStrong: "rgba(255, 255, 255, 0.12)",
     glassBorder: "rgba(255, 255, 255, 0.18)",
     backdrop: "rgba(5, 6, 15, 0.6)", // dims the screen behind sheets/menus
 };
 
-// Font family names, as loaded in app/_layout.tsx. (With custom fonts, pick
-// the weight by family - don't also set fontWeight, Android ignores it or
-// falls back to the system font.)
+// With custom fonts, choose the weight by family - don't set fontWeight too.
 export const FONTS = {
     display: "BelgantAesthetic",      // big headlines
     regular: "PublicSans-Regular",
@@ -46,8 +39,6 @@ export const FONT_FILES = {
 
 export const RADIUS = 16;
 
-// The design frames' size. fitScale: how much bigger this screen is than a
-// frame, limited by whichever side has less room - so things grow on a
-// tablet but never spill off a wide-but-short screen. (~1 on phones.)
+// How much bigger this screen is than the design frame (~1 on phones).
 export const FRAME = { width: 393, height: 852 };
 export const fitScale = (width: number, height: number) => Math.min(width / FRAME.width, height / FRAME.height);

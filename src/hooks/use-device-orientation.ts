@@ -15,25 +15,10 @@ export function lerpVec(a: Vec3, b: Vec3, t: number): Vec3 {
     return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t };
 }
 
-// Device-local axes, as reported by the raw Accelerometer/Magnetometer on
-// both platforms: x = screen right, y = towards the top edge, z = out of
-// the screen towards your face.
-//
-// This deliberately avoids expo-sensors' DeviceMotion.rotation - despite
-// being named alpha/beta/gamma like the W3C device-orientation spec, on iOS
-// it's actually CMAttitude.yaw/pitch/roll passed straight through in
-// radians (the docs' "expressed in degrees" is wrong), and on Android it's
-// SensorManager.getOrientation() with two of the three axes negated. Both
-// are real Euler angles, just in different rotation conventions than the
-// W3C one and from each other, so building a rotation matrix out of them
-// with one shared formula silently gives the wrong attitude at any real
-// tilt - which is why the sky view could never actually lock onto the sun.
-//
-// Raw gravity + raw magnetic field don't have that problem: they're just
-// vectors in the device's own axes, consistent on both platforms. E/N/U
-// below is the standard tilt-compensated-compass construction (the same
-// one Android's SensorManager.getRotationMatrix uses internally) and holds
-// at any tilt, including pointing straight up.
+// Builds magnetic east/north/up (in device axes: x right, y up the screen, z out of
+// the screen) from raw gravity + magnetic field - a tilt-compensated compass that
+// works at any angle. DeviceMotion.rotation isn't used: its Euler angles follow
+// different conventions on iOS and Android.
 function computeBasis(gravity: Vec3, magnetic: Vec3) {
     const U = normalize(gravity);
     const E = normalize(cross(magnetic, gravity));
@@ -41,22 +26,10 @@ function computeBasis(gravity: Vec3, magnetic: Vec3) {
     return { E, N, U };
 }
 
-// E, N, U are device-local unit vectors pointing at *magnetic* east, north
-// and up - i.e. "if you wanted to point the phone at magnetic north right
-// now, here's what that looks like in the phone's own x/y/z axes." declination
-// (magnetic → true north correction, from Location's heading, which already
-// knows it for your location) lets callers work in true bearings, matching
-// SunCalc.
-// hasLocationPermission gates the compass heading watcher below - without
-// it, watchHeadingAsync would fire on mount regardless of whether
-// useLocation has actually gone through its own permission flow yet, and
-// its native implementation triggers its own implicit system prompt if
-// permission isn't already granted. That's a second, uncoordinated way to
-// trigger the real OS dialog, bypassing the "check silently, show our own
-// message, only request on an explicit tap" flow entirely.
-// ~30 readings a second; each reading moves this fraction of the way to the
-// new value. Higher = snappier but shakier. (The sky adds its own per-frame
-// easing on top - see SMOOTHING in sky-scene.tsx.)
+// E/N/U: magnetic east/north/up in device axes; declination converts to true north.
+// The heading watcher waits for location permission, since it would otherwise
+// trigger its own system prompt.
+// ~30 readings/s; each moves this fraction of the way to the new value.
 const SENSOR_INTERVAL_MS = 33;
 const GRAVITY_SMOOTHING = 0.1;
 const MAGNETIC_SMOOTHING = 0.06;
@@ -89,8 +62,6 @@ export function useDeviceOrientation(hasLocationPermission: boolean) {
         const { E, N, U } = computeBasis(gravity.current, magnetic.current);
         setBasis({ E, N, U });
 
-        // device forward (looking through the back of the phone) is local
-        // (0,0,-1); its components along E/N/U give its world direction.
         const we = -E.z, wn = -N.z, wu = -U.z;
         const magAz = ((Math.atan2(we, wn) * 180) / Math.PI + 360) % 360;
         setAzimuth((magAz + declinationRef.current + 360) % 360);
@@ -100,10 +71,7 @@ export function useDeviceOrientation(hasLocationPermission: boolean) {
     useEffect(() => {
         Accelerometer.setUpdateInterval(SENSOR_INTERVAL_MS);
         const sub = Accelerometer.addListener(({ x, y, z }) => {
-            // Accelerometer reports the gravity vector itself (pointing down -
-            // e.g. z = -1g lying flat screen-up per Apple's CMAccelerometerData
-            // docs), not the reaction force pointing up. Negate so `gravity`
-            // consistently means "up" for computeBasis.
+            // The accelerometer reports gravity (pointing down); negate so it means "up".
             gravity.current = lerpVec(gravity.current, { x: -x, y: -y, z: -z }, GRAVITY_SMOOTHING);
             recompute();
         });
@@ -113,12 +81,8 @@ export function useDeviceOrientation(hasLocationPermission: boolean) {
     useEffect(() => {
         Magnetometer.setUpdateInterval(SENSOR_INTERVAL_MS);
         const sub = Magnetometer.addListener(({ x, y, z }) => {
-            // Magnetometer is noisier than the accelerometer (more prone to
-            // nearby-metal/electronics interference), and it's what mostly
-            // drives the arrow's rotation, so smooth it a bit harder.
-            // No recompute() here: the accelerometer runs at the same rate and
-            // already recomputes, so doing it twice would just double the
-            // re-renders for no visible gain.
+            // Noisier than the accelerometer, so smoothed harder. No recompute() here - the
+            // accelerometer already recomputes at the same rate.
             magnetic.current = lerpVec(magnetic.current, { x, y, z }, MAGNETIC_SMOOTHING);
         });
         return () => sub.remove();

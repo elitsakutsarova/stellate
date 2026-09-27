@@ -9,13 +9,10 @@ import { COLORS, FONTS, fitScale } from "@/lib/theme";
 import { menuIcon } from "@/components/side-menu";
 import { ArrowIcon } from "@/components/art";
 
-// How far in from each screen edge the body's centre must be before it counts
-// as "looking" (fraction of width/height) - so the tap, flash and together
-// moment wait until it's properly in view, not when a sliver shows at the edge.
+// how far in from each edge the body's centre must be to count as "looking"
 const LOOK_MARGIN = 0.2;
 
-// The arrow only helps when you can't see anything: it stays hidden while any
-// part of the sun/moon's glow is still on screen, even right at an edge.
+// the arrow hides while any part of a glow is on screen
 const GLOW_VISIBLE_PX = 24;
 
 type Props = {
@@ -28,13 +25,8 @@ type Props = {
     onLookingChange: (looking: Looking) => void;
 };
 
-// Guidance on top of the drawn sky (SkyScene draws the sun/moon itself): an
-// arrow at the screen edge pointing to the main body while you're looking at
-// nothing, smoothed every frame, and a haptic tap the moment the sun or moon
-// (glow or below-horizon ring) comes on screen.
-// Self-contained - sky.tsx
-// only needs to know where the target is (active) and which way the
-// device is pointing (E/N/U/declination), not how any of this works.
+// Guidance on top of the sky: an edge arrow to the main body when nothing is in
+// view, and a haptic tap when the sun or moon comes into view.
 export function SkyViewfinder({ bodies, active, E, N, U, declination, onLookingChange }: Props) {
     const { width, height } = useSafeAreaFrame();
     const insets = useSafeAreaInsets();
@@ -44,8 +36,7 @@ export function SkyViewfinder({ bodies, active, E, N, U, declination, onLookingC
         ? projectToScreen(E, N, U, declination, active.bearing, active.altitude, width, height)
         : null;
 
-    // what's on screen right now - "sun", "moon", or null if nothing is. If
-    // both are (e.g. a daytime moon near the sun), the one nearer the centre.
+    // if both are on screen, the one nearer the centre
     const placed = bodies.map((body) => ({
         name: body.name,
         p: projectToScreen(E, N, U, declination, body.bearing, body.altitude, width, height),
@@ -62,10 +53,7 @@ export function SkyViewfinder({ bodies, active, E, N, U, declination, onLookingC
         .sort((a, b) => a.p.angleFromCenter - b.p.angleFromCenter);
     const lookingAt: Looking = onScreen[0]?.name ?? null;
     const arrowRef = useRef<View | null>(null);
-    // Kept in sync every render (not via an effect) so the animation loop
-    // below can always read the latest projection without needing to
-    // restart - projection is a new object every render, so depending on
-    // it directly would tear down and reset the loop on every sensor tick.
+    // kept current every render, so the animation loop never has to restart
     const projectionRef = useRef(projection);
     projectionRef.current = projection;
     const arrowState = useRef({
@@ -82,8 +70,7 @@ export function SkyViewfinder({ bodies, active, E, N, U, declination, onLookingC
             if (p) {
                 arrowState.current.x += (p.arrowX - arrowState.current.x) * 0.1;
                 arrowState.current.y += (p.arrowY - arrowState.current.y) * 0.1;
-                // shortest-path angle smoothing, so crossing the 0°/360°
-                // wrap doesn't make the arrow spin the long way around
+                // shortest way round, so crossing 0/360 doesn't spin the arrow
                 const deltaDeg = ((p.arrowDeg - arrowState.current.deg + 540) % 360) - 180;
                 arrowState.current.deg += deltaDeg * 0.1;
             }
@@ -99,8 +86,6 @@ export function SkyViewfinder({ bodies, active, E, N, U, declination, onLookingC
         return () => cancelAnimationFrame(animationFrame);
     }, []);
 
-    // Runs only when lookingAt actually changes: tap as the sun/moon comes
-    // on screen (not while it stays there), and tell sky.tsx either way.
     useEffect(() => {
         if (lookingAt) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         onLookingChange(lookingAt);
@@ -109,11 +94,7 @@ export function SkyViewfinder({ bodies, active, E, N, U, declination, onLookingC
     if (!active || !projection || anythingInView) return null;
 
     return (
-        // Spans the full screen explicitly - a parent using alignItems:
-        // "center" would otherwise shrink a flex:1 child to its content
-        // width, throwing off projection.x/y (computed from the actual
-        // screen width/height) and making the icon land somewhere that
-        // doesn't match where it's supposed to be.
+        // full screen explicitly, so projection x/y match the screen
         <View
             pointerEvents="box-none"
             style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}

@@ -5,9 +5,6 @@ import { CopyIcon, ShareIcon } from "@/components/art";
 import { glass } from "@/components/ui";
 import { COLORS, FONTS, RADIUS } from "@/lib/theme";
 
-// A pair code in a glass box (tap to copy - it briefly says "Copied"), with a
-// lavender paper-plane button next to it to send it to someone. Used in the
-// "your code" sheet and the side menu.
 export function CodeRow({ code, size = 26, accent = COLORS.accent }: { code: string; size?: number; accent?: string }) {
     const [copied, setCopied] = useState(false);
     const copy = async () => {

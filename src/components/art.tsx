@@ -1,11 +1,8 @@
 import Svg, { Circle, ClipPath, Defs, G, Line, Path, Rect } from "react-native-svg";
 
-// The Stellate artwork from assets/images/*.svg, as components so their
-// colour can follow the theme (the files themselves are black). Sizes are
-// set by width; height follows the original proportions.
+// The artwork from assets/images/*.svg as components, so their colour follows the theme.
 
-// Keeps line art the same thickness at any size: the drawings are scaled,
-// so a 1-unit stroke would get thicker as they grow.
+// same line thickness at any size
 const stroke = (viewBoxWidth: number, width: number, px = 1.2) => (px * viewBoxWidth) / width;
 
 const LOGO_PATHS = [
@@ -43,8 +40,7 @@ export function Moon({ width, color }: { width: number; color: string }) {
     );
 }
 
-// Half a sun (the right half, with its rays) - the circle's centre sits on
-// the drawing's left edge, like in the original file.
+// Half a sun - the circle's centre sits on the left edge, as in the original file.
 export const SUN_SIZE = { width: 139, height: 278 };
 
 export function Sun({ width, color }: { width: number; color: string }) {
@@ -73,7 +69,6 @@ export function Sun({ width, color }: { width: number; color: string }) {
     );
 }
 
-// Small line icons in the same thin style (24 x 24 grid).
 export function CopyIcon({ size = 24, color }: { size?: number; color: string }) {
     return (
         <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -92,8 +87,7 @@ export function ShareIcon({ size = 24, color }: { size?: number; color: string }
     );
 }
 
-// The paper plane's outline without its middle line, turned to point
-// straight up - the "this way to the sun/moon" arrow (rotated by the caller).
+// The paper plane's outline without its middle line, pointing up.
 export function ArrowIcon({ size = 28, color }: { size?: number; color: string }) {
     return (
         <Svg width={size} height={size} viewBox="-2 -3 28 28" fill="none">

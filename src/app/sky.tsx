@@ -24,14 +24,11 @@ import { Body, Button, MAX_TEXT_WIDTH, Pill, Title } from "@/components/ui";
 import { COLORS, fitScale } from "@/lib/theme";
 import { skyColors, SKY_PRESETS, type SkyPreset } from "@/lib/sky-colors";
 
-// Before the sun's position is known (no location yet), show the night sky.
 const NIGHT_UNTIL_KNOWN = -20;
 const GLIDE_MS = 1200;
 
-// Follows `target`, but glides there over GLIDE_MS instead of jumping - so
-// the sky's colours change smoothly (switching debug presets, or the real
-// sun moving). The first known value is taken straight away, so opening the
-// app doesn't sweep through other times of day first.
+// Eases towards `target` instead of jumping, so the sky's colours change smoothly.
+// The first known value is taken straight away.
 function useGlide(target: number | undefined) {
     const anim = useRef(new Animated.Value(target ?? 0)).current; // starts where the target is
     const [value, setValue] = useState<number | undefined>(target);
@@ -59,7 +56,6 @@ export default function Sky() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { width, height } = useSafeAreaFrame();
-    // 1 on phones, bigger on tablets - the status card's size follows it
     const s = Math.max(1, fitScale(width, height));
     const deviceId = usePairStore((state) => state.deviceId);
     const pairId = usePairStore((state) => state.pairId);
@@ -70,9 +66,7 @@ export default function Sky() {
 
     const { coords, error: locationError, canAskAgain, retry } = useLocation();
 
-    // Share a rough location (the server rounds it to ~10 km) so the other
-    // phone can plan "moon is up for both of you" reminders. Best-effort: if
-    // it fails, reminders just wait until the next time.
+    // rough location (the server rounds it) for the other phone's reminders
     useEffect(() => {
         if (!coords || !pairId || !deviceId) return;
         setLocation(pairId, deviceId, coords).catch(() => {});
@@ -82,11 +76,7 @@ export default function Sky() {
     useSkyReminders(notifications.reminders, coords, partnerLeft ? null : pair?.partnerLocation ?? null);
     const [menuOpen, setMenuOpen] = useState(false);
 
-    // The location sheet opens whenever the error actually changes (e.g. first
-    // denied, or switches from "denied" to "go to Settings") - not on every
-    // repeated foreground re-check that still finds the same denial, since
-    // setting state to an identical value doesn't trigger this effect - and
-    // closes by itself once location works.
+    // opens when the error changes, closes once location works
     const [locationSheet, setLocationSheet] = useState(false);
     useEffect(() => {
         setLocationSheet(!!locationError);
@@ -101,10 +91,7 @@ export default function Sky() {
     const sensors = useDeviceOrientation(!!coords);
     const { declination } = sensors;
 
-    // Development only: pretend the phone is aimed straight at the sun/moon,
-    // for testing on devices with poor sensors. __DEV__ is false in a real
-    // build, so neither the button nor this override can exist there.
-    // Tapping cycles: sensors -> look at sun -> look at moon -> sensors.
+    // Debug only: pretend the phone points straight at the sun or moon.
     const [debugTarget, setDebugTarget] = useState<Looking>(null);
     const debugBody = __DEV__ ? bodies.find((b) => b.name === debugTarget) : undefined;
     const { E, N, U } = debugBody
@@ -112,8 +99,7 @@ export default function Sky() {
         : sensors;
     const nextDebugTarget: Looking = debugTarget === null ? "sun" : debugTarget === "sun" ? "moon" : null;
 
-    // The sky's colours follow the real sun. Development only: a second pill
-    // cycles real -> day -> golden -> twilight -> night, to check each look.
+    // Debug only: jump between times of day.
     const [debugSky, setDebugSky] = useState<SkyPreset | null>(null);
     const skyOrder: (SkyPreset | null)[] = [null, "day", "golden", "twilight", "night"];
     const nextDebugSky = skyOrder[(skyOrder.indexOf(debugSky) + 1) % skyOrder.length];
@@ -121,16 +107,13 @@ export default function Sky() {
     const sunAltitude = useGlide(__DEV__ && debugSky ? SKY_PRESETS[debugSky] : realSunAltitude) ?? NIGHT_UNTIL_KNOWN;
     const palette = skyColors(sunAltitude);
 
-    // What *I'm* looking at, straight from the viewfinder (no delay) - the
-    // other phone's value already arrives settled via presence.
     const [myLooking, setMyLooking] = useState<Looking>(null);
     const handleLookingChange = useCallback((looking: Looking) => {
         setMyLooking(looking);
         setLooking(looking);
     }, [setLooking]);
 
-    // Both looking at the sky right now - the same body or not (it can be
-    // day for one of you and night for the other).
+    // both looking at the sky - the same body or not
     const together = !partnerLeft && !!myLooking && !!partnerLooking;
 
     useLookUpAlerts({ enabled: notifications.lookUp, pairId, deviceId, myLooking, partnerOnline });
@@ -140,9 +123,7 @@ export default function Sky() {
             try {
                 await setPresence(pair.id, deviceId, false);
             } catch (err: any) {
-                // best-effort - still let them leave locally even if the
-                // server couldn't be reached to update presence, so a
-                // network hiccup can never trap someone on this screen
+                // leave locally even if the server can't be reached
                 console.warn("Couldn't update presence on disconnect:", err.message);
             }
         }
@@ -153,7 +134,6 @@ export default function Sky() {
 
     const [disconnectSheet, setDisconnectSheet] = useState(false);
 
-    // The one line the status card shows (the together moment has its own).
     const status = partnerLeft
         ? { text: "Your special someone left this connection.", color: COLORS.muted }
         : partnerLooking
@@ -163,10 +143,7 @@ export default function Sky() {
                 : { text: "○ Your special someone isn't in the app right now", color: COLORS.muted };
 
     return (
-        // Full screen (header hidden) so the drawn sky's maths, which uses the
-        // screen size, matches exactly what's on screen. The sky gets the whole
-        // screen; everything else is kept small: a status card at the bottom,
-        // the rest in the side menu.
+        // full screen (header hidden) so the sky maths match the screen
         <View style={{ flex: 1, backgroundColor: COLORS.night }}>
             <Stack.Screen options={{ headerShown: false }} />
             <StatusBar style="light" />
@@ -199,8 +176,7 @@ export default function Sky() {
                 </Pressable>
             )}
 
-            {/* Status card: quiet on purpose - it hugs its text, with a faint
-                glass look. Small on phones, scaled up (by s) on tablets. */}
+            {/* status card */}
             <View
                 pointerEvents="box-none"
                 style={{ position: "absolute", left: 0, right: 0, bottom: insets.bottom + 20, paddingHorizontal: 24, alignItems: "center", zIndex: 2 }}

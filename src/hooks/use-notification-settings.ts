@@ -6,37 +6,27 @@ import type { NotificationKind } from "@/lib/constants";
 
 const KINDS: NotificationKind[] = ["reminders", "lookUp"];
 
-// The on/off toggles for each kind of notification, and the permission flow
-// behind them (one system permission covers both):
-// - The system asks once, the first time the sky screen opens; the answer
-//   sets every toggle. Saying no is fine - no nagging.
-// - Turning a toggle on later asks again; if the system won't show the prompt
-//   anymore, it opens the phone's Settings, and the toggle switches on by
-//   itself once you come back with it allowed.
-// - The toggles never lie: if notifications get switched off for Stellate in
-//   the phone's Settings, they show off too.
+// The notification toggles and their permission flow: the OS asks once on the sky
+// screen; a toggle asks again, or opens Settings if the OS won't; and the toggles
+// switch off if notifications are turned off in Settings.
 export function useNotificationSettings() {
     const isHydrated = usePairStore((state) => state.isHydrated);
     const settings = usePairStore((state) => state.notifications);
     const setNotification = usePairStore((state) => state.setNotification);
-    // which toggle sent the person to Settings (if any)
     const waitingForSettings = useRef<NotificationKind | null>(null);
     const settingsRef = useRef(settings);
     settingsRef.current = settings;
 
-    // first visit: ask once, remember the answer for every kind not decided yet
     useEffect(() => {
         if (!isHydrated || !notificationsSupported) return;
         const undecided = KINDS.filter((kind) => settings[kind] === null);
         if (undecided.length === 0) return;
-        // only a brand-new install gets the popup; a kind that's merely new
-        // (added in an update) just follows the current permission, silently
+        // only a fresh install gets the popup; a newly added kind follows the permission
         const answer = undecided.length === KINDS.length ? requestNotificationPermission() : getNotificationPermission();
         answer.then(({ granted }) => undecided.forEach((kind) => setNotification(kind, granted)));
     }, [isHydrated, settings, setNotification]);
 
-    // Match the toggles to what the phone actually allows - on opening the
-    // screen and every time the app comes back to the front.
+    // match the toggles to the real permission whenever the app comes to the front
     useEffect(() => {
         if (!notificationsSupported) return;
         const sync = async () => {
@@ -61,7 +51,6 @@ export function useNotificationSettings() {
             const { granted } = await requestNotificationPermission();
             return setNotification(kind, granted);
         }
-        // the system won't ask anymore - Settings is the only way
         waitingForSettings.current = kind;
         Linking.openSettings();
     };

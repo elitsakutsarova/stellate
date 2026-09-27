@@ -7,10 +7,8 @@ import type { SkyBody } from "@/hooks/use-sky-bodies";
 
 type BodyName = SkyBody["name"];
 
-// Expo Go on Android (SDK 53+) throws as soon as expo-notifications is even
-// imported, which would crash the whole sky screen. So it's only loaded
-// where it works (a development/real build, or iOS); everywhere else the
-// reminders simply switch off and every function below does nothing.
+// Expo Go on Android (SDK 53+) throws as soon as expo-notifications is imported,
+// so it's only loaded where it works; elsewhere these functions do nothing.
 export const notificationsSupported = !(
     Platform.OS === "android" && Constants.executionEnvironment === ExecutionEnvironment.StoreClient
 );
@@ -18,9 +16,7 @@ const Notifications: typeof NotificationsModule | null = notificationsSupported
     ? require("expo-notifications")
     : null;
 
-// By default a notification is hidden while the app is open - show it
-// anyway, so it's never silently swallowed. (Sound must be on: on Android,
-// shouldPlaySound: false hides the drop-down banner entirely.)
+// show notifications while the app is open too (on Android, sound off hides the banner)
 Notifications?.setNotificationHandler({
     handleNotification: async () => ({
         shouldShowBanner: true,
@@ -47,11 +43,8 @@ const isUp = (body: BodyName, date: Date, where: Coords) =>
 const bothSee = (body: BodyName, date: Date, me: Coords, them: Coords) => isUp(body, date, me) && isUp(body, date, them);
 const allowedHour = (date: Date) => date.getHours() >= EARLIEST_HOUR && date.getHours() < LATEST_HOUR;
 
-// The moments to remind you about one body: when "the sun/moon is up for
-// both of us, at a decent hour" *starts* - either it just rose for the
-// second of you, or it was already up and 9:00 arrives. Checked every 10
-// minutes over the next few days, at most one per day. Something that's
-// already true right now doesn't count (you're in the app anyway).
+// When "up for both of us, at a decent hour" starts, over the next few days -
+// at most one per day, and not if it's already true right now.
 export function findSharedTimes(body: BodyName, me: Coords, them: Coords, from = new Date()): Date[] {
     const stepMs = STEP_MINUTES * 60 * 1000;
     const end = from.getTime() + DAYS_AHEAD * 24 * 60 * 60 * 1000;
@@ -72,8 +65,7 @@ export function findSharedTimes(body: BodyName, me: Coords, them: Coords, from =
     return times;
 }
 
-// Android needs "channels" (the categories users see in system settings)
-// before it will show the permission prompt or any notification.
+// Android needs a channel before it shows the permission prompt or notifications.
 async function ensureChannel() {
     if (!Notifications || Platform.OS !== "android") return;
     await Notifications.setNotificationChannelAsync(CHANNELS.reminders, {
@@ -86,9 +78,7 @@ async function ensureChannel() {
     });
 }
 
-// This phone's "address" for push messages sent through Expo's push service
-// (the server sends to it when your special someone looks up). Needs a
-// development/real build; returns null wherever that's not possible.
+// null where push isn't possible (Expo Go, simulators)
 export async function getPushToken(): Promise<string | null> {
     if (!Notifications) return null;
     try {
@@ -102,22 +92,16 @@ export async function getPushToken(): Promise<string | null> {
     }
 }
 
-// Checks without showing anything. canAskAgain false means the system won't
-// show the prompt anymore (Android: after 2 "no"s, iOS: after 1) - only the
-// phone's Settings can turn it on then.
+// canAskAgain false = the OS won't prompt again (Android: after 2 "no"s, iOS: 1)
 export async function getNotificationPermission() {
     if (!Notifications) return { granted: false, canAskAgain: false };
     const { status, canAskAgain } = await Notifications.getPermissionsAsync();
     return { granted: status === "granted", canAskAgain };
 }
 
-// Module-level, like the location permission in use-location.ts: React's
-// dev-mode double mount would otherwise fire two requests at once - two
-// popups, using up both of Android's chances to ask. A second caller while
-// one is in flight shares the same answer instead.
+// shared, so React's dev-mode double mount can't show two popups
 let pendingRequest: Promise<{ granted: boolean; canAskAgain: boolean }> | null = null;
 
-// Shows the system prompt (if the OS still allows asking).
 export function requestNotificationPermission() {
     if (!Notifications) return Promise.resolve({ granted: false, canAskAgain: false });
     const notifications = Notifications;
@@ -131,17 +115,13 @@ export function requestNotificationPermission() {
     return pendingRequest;
 }
 
-// Scheduling is async and can be triggered again before it finishes (e.g.
-// both locations arriving at once). Chaining every run onto the previous one
-// means they never overlap - otherwise two runs could both clear and then
-// both schedule, leaving duplicate reminders.
+// Runs one after another, so overlapping reschedules can't leave duplicates.
 let queue: Promise<void> = Promise.resolve();
 const serialized = (work: () => Promise<void>) => {
     queue = queue.then(work).catch((err) => console.warn("Sky reminders:", err));
     return queue;
 };
 
-// Replaces all planned reminders with fresh ones for these two locations.
 export const scheduleSkyReminders = (me: Coords, them: Coords) =>
     serialized(async () => {
         if (!Notifications) return;
@@ -162,9 +142,7 @@ export const cancelSkyReminders = () =>
         await Notifications?.cancelAllScheduledNotificationsAsync();
     });
 
-// Development only: the same reminder, 10 seconds from now - to check that
-// notifications actually arrive without waiting for a real moonrise.
-// (Doesn't clear the real planned ones.)
+// Debug only: a real reminder in 10 seconds.
 export const sendTestReminder = () =>
     serialized(async () => {
         if (!Notifications) return;

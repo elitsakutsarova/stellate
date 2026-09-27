@@ -8,10 +8,7 @@ const SLIDE_MS = 280;
 const DISMISS_PX = 100;     // drag down further than this to close...
 const DISMISS_SPEED = 1;    // ...or flick down faster than this
 
-// A panel that slides up from the bottom over a dimmed screen. Closes by
-// swiping it down, tapping the dimmed part, or Android's back button.
-// Always rendered (just pushed below the screen when closed) so it can
-// animate both ways.
+// Closes by swiping down, tapping outside, or Android's back button.
 export function BottomSheet({ open, onClose, children, background = COLORS.nightMid }: {
     open: boolean;
     onClose: () => void;
@@ -25,14 +22,12 @@ export function BottomSheet({ open, onClose, children, background = COLORS.night
     const onCloseRef = useRef(onClose);
     onCloseRef.current = onClose;
 
-    // JS-driven (not the native driver): the drag below has to be added to
-    // this, and the two must run on the same side
+    // JS driver: the drag is added to this, and both must run on the same side
     useEffect(() => {
         if (open) drag.setValue(0);
         Animated.timing(progress, { toValue: open ? 1 : 0, duration: SLIDE_MS, useNativeDriver: false }).start();
     }, [open, progress, drag]);
 
-    // Android back = close the sheet (instead of leaving the screen)
     useEffect(() => {
         if (!open) return;
         const sub = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -42,8 +37,7 @@ export function BottomSheet({ open, onClose, children, background = COLORS.night
         return () => sub.remove();
     }, [open]);
 
-    // Swipe down to dismiss. Only takes over once the finger clearly moves
-    // down, so taps on the buttons inside still work.
+    // only takes over once the finger clearly moves down, so taps still work
     const swipe = useMemo(() => PanResponder.create({
         onMoveShouldSetPanResponder: (_, g) => g.dy > 6 && Math.abs(g.dy) > Math.abs(g.dx),
         onPanResponderMove: (_, g) => drag.setValue(Math.max(0, g.dy)),
@@ -73,10 +67,7 @@ export function BottomSheet({ open, onClose, children, background = COLORS.night
                     transform: [{ translateY: Animated.add(slide, drag) }],
                 }}
             >
-                {/* grab handle - shows it can be pulled down */}
                 <View style={{ alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.glassBorder }} />
-                {/* same capped-width column as the screens' content, so on a
-                    tablet the sheet's contents don't stretch across it all */}
                 <View style={{ width: "100%", maxWidth: MAX_TEXT_WIDTH, gap: 20 }}>{children}</View>
             </Animated.View>
         </View>

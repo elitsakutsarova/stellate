@@ -27,31 +27,22 @@ const MOVE_MS = 650;         // welcome <-> connect
 const TEXT_OUT_MS = 180;     // panel text fading out...
 const TEXT_IN_MS = 260;      // ...and the next step's fading in
 
-// sun + moon: 0 together (arriving), 1 apart (welcome and connect - on the
-// connect step the whole picture just gets smaller to make room)
+// sun + moon: 0 together, 1 apart (welcome), 2 = connect (same, scaled down)
 const ART_STEPS = [ARRANGEMENTS.welcomeStart, ARRANGEMENTS.welcomeEnd];
 const ART_HEIGHT = 270;      // room the art needs, in design points
 const LOGO_WIDTH = 96;       // in design points
 const SIDE = 24;             // left/right padding of the panel content
 const BOTTOM_GAP = 24;       // space under the last button
 
-// The glass panel, per step: how deep its wave dips on the right (px), and
-// where the text starts below the top of the wave. (The panel's height
-// itself comes from its content - see Index.)
+// per step: wave dip on the right (px) and where the text starts below the wave top
 const PANEL = {
   welcome: { wave: 100, contentTop: 70 },
   connect: { wave: 40, contentTop: 60 },
 };
 
-// Welcome -> connect, as one screen with two steps, so the sun and moon can
-// glide from one arrangement to the next (like the same picture animating
-// between two slides), the glass panel slides up and flattens its wave, and
-// the text in it cross-fades.
-//
-// Layout, CSS-style: the panel is exactly as tall as its content (measured,
-// so it never overflows - no scrolling), the content is a width-capped
-// column, and the sun and moon scale to fill whatever space is left between
-// the logo and the panel. So it fits any screen, phone or tablet.
+// Welcome -> connect as one screen, so the sun and moon can animate between the
+// steps. The panel's height comes from its (measured) content, so it never scrolls;
+// the art scales to fill the space left above it.
 export default function Index() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -73,17 +64,14 @@ export default function Index() {
     return () => wave.removeListener(id);
   }, [wave]);
 
-  // Chat-app style: when the keyboard opens, slide the panel up by as much as
-  // the keyboard covers, so the code field stays in view while you type.
-  // (Done by hand: on newer Android the app draws behind the keyboard area,
-  // and KeyboardAvoidingView often doesn't notice the keyboard there.)
+  // Lift the panel above the keyboard by hand - KeyboardAvoidingView often misses
+  // the keyboard on newer Android.
   const keyboardLift = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const ios = Platform.OS === "ios";
     const slide = (to: number, duration = 220) =>
       Animated.timing(keyboardLift, { toValue: to, duration, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
     const show = Keyboard.addListener(ios ? "keyboardWillShow" : "keyboardDidShow", (e) => {
-      // the panel already keeps this much clear at the bottom, so only lift the rest
       const covered = e.endCoordinates.height - insets.bottom - BOTTOM_GAP + 12;
       slide(-Math.max(0, covered), ios ? e.duration : undefined);
     });
@@ -102,8 +90,6 @@ export default function Index() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const waitChannel = useRef<RealtimeChannel | null>(null);
 
-  // ---- layout (all in screen points) ----
-  // Each step's content height, measured from invisible copies (see below).
   const [contentHeight, setContentHeight] = useState<Record<Step, number>>({ welcome: 0, connect: 0 });
   const measured = contentHeight.welcome > 0 && contentHeight.connect > 0;
   const columnWidth = Math.min(width - SIDE * 2, MAX_TEXT_WIDTH);
@@ -112,7 +98,6 @@ export default function Index() {
   const logoWidth = LOGO_WIDTH * k;
   const logoTop = insets.top + 12;
   const logoBottom = logoTop + (logoWidth * 221) / 733;
-  // top of the wave: just high enough for the content below it
   const panelTop = (s: Step) => height - insets.bottom - BOTTOM_GAP - contentHeight[s] - PANEL[s].contentTop;
   const panelBase = Math.min(panelTop("welcome"), panelTop("connect")); // the panel is laid out at the higher one...
   const panelShift = (s: Step) => panelTop(s) - panelBase;                 // ...and slid down by this
@@ -120,13 +105,11 @@ export default function Index() {
   const artScale = Math.min(width / FRAME.width, space("welcome") / ART_HEIGHT);
   const artY = (s: Step) => (logoBottom + panelTop(s)) / 2;
 
-  // already connected? skip straight to the sky
   useEffect(() => {
     if (isHydrated && pairId) router.replace("/sky");
   }, [isHydrated, pairId, router]);
 
-  // Arriving (once the launch screen is gone, so it isn't played hidden):
-  // the sun and moon drift apart.
+  // wait for the launch screen to go, so this isn't played hidden
   useEffect(() => {
     if (!launchDone || !isHydrated || pairId) return;
     Animated.sequence([
@@ -145,8 +128,6 @@ export default function Index() {
     });
   };
 
-  // Android back on the connect step = back to welcome (the sheet handles
-  // its own back press while it's open)
   useEffect(() => {
     if (step !== "connect" || sheetOpen) return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -157,16 +138,14 @@ export default function Index() {
   }, [step, sheetOpen]);
 
   const enterSky = async (pair: Pair) => {
-    // stop listening here first - the sky screen opens its own listener on
-    // the same channel, and this one mustn't be torn down on top of it
+    // stop listening first, or its cleanup could remove the sky screen's channel
     if (waitChannel.current) await supabase.removeChannel(waitChannel.current);
     waitChannel.current = null;
     await setPair(pair.id, pair.code);
     router.replace("/sky");
   };
 
-  // While the code sheet is up: the moment your special someone joins (the
-  // server announces it on the pair's channel), go to the sky by yourself.
+  // go to the sky by yourself as soon as your special someone joins
   useEffect(() => {
     if (!pendingPair) return;
     const channel = supabase
@@ -211,8 +190,7 @@ export default function Index() {
     <View style={{ flex: 1 }}>
       <NightBackground glowY={0.25} />
 
-      {/* Invisible copies of both steps' content at the real column width,
-          only to measure how tall each is - that sets the panel's height. */}
+      {/* invisible copies, only to measure each step's content height */}
       <View pointerEvents="none" style={{ position: "absolute", opacity: 0, left: 0, top: 0, width: columnWidth }}>
         <View onLayout={(e) => { const h = e.nativeEvent.layout.height; setContentHeight((c) => ({ ...c, welcome: h })); }}>
           <WelcomeContent onConnect={() => {}} />
@@ -228,10 +206,6 @@ export default function Index() {
 
       {measured && (
         <>
-          {/* the sun and moon, centred in the space between the logo and the
-              panel - following the panel up and shrinking to fit on connect,
-              and fading out while the keyboard lifts the panel over them (so
-              they don't show through the glass behind the text) */}
           <Animated.View
             pointerEvents="none"
             style={{
@@ -254,10 +228,7 @@ export default function Index() {
             <SunMoon steps={ART_STEPS} progress={art} color={COLORS.text} scale={artScale} />
           </Animated.View>
 
-          {/* The glass panel: laid out at the higher of the two steps' tops and
-              slid down for the other, plus lifted above the keyboard while it's
-              open - moving it is a transform, so it runs smoothly on the
-              native side. */}
+          {/* laid out at the higher step's top and slid down for the other */}
           <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
             <Animated.View
               style={{
@@ -278,7 +249,6 @@ export default function Index() {
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{
                   paddingTop: PANEL[step].contentTop, paddingHorizontal: SIDE,
-                  // the part of the panel slid below the screen
                   paddingBottom: insets.bottom + BOTTOM_GAP + panelShift(step),
                 }}
               >
@@ -320,7 +290,6 @@ export default function Index() {
   );
 }
 
-// Step 1's panel content: text group, then the button.
 function WelcomeContent({ onConnect }: { onConnect: () => void }) {
   return (
     <View style={{ gap: 32 }}>
@@ -337,7 +306,6 @@ function WelcomeContent({ onConnect }: { onConnect: () => void }) {
   );
 }
 
-// Step 2's panel content: text group, then the actions group.
 function ConnectContent({ joinCode, setJoinCode, busy, onCreate, onJoin, measuring }: {
   joinCode: string;
   setJoinCode: (code: string) => void;
@@ -366,8 +334,7 @@ function ConnectContent({ joinCode, setJoinCode, busy, onCreate, onJoin, measuri
             autoCorrect={false}
             maxLength={6}
             value={joinCode}
-            // codes only use A-Z (without I and O) and 2-9 - anything else
-            // can't be part of one, so it's dropped as you type
+            // only characters codes can contain (A-Z without I/O, 2-9)
             onChangeText={(text) => setJoinCode(text.toUpperCase().replace(/[^A-HJ-NP-Z2-9]/g, ""))}
             onSubmitEditing={onJoin}
             returnKeyType="done"
@@ -383,11 +350,8 @@ function ConnectContent({ joinCode, setJoinCode, busy, onCreate, onJoin, measuri
   );
 }
 
-// The panel's frosted-glass background. Its top edge is the wave from the
-// designs: one smooth S-curve - a round dome on the left, flowing down into a
-// dip of `depth` px on the right (points traced from the Figma frame).
-// Every control point stays at or below the top, so the curve never pokes
-// out above the panel and gets cut off.
+// Top edge traced from the Figma wave; control points stay at or below the top
+// so the curve isn't clipped.
 function GlassWave({ depth: d }: { depth: number }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
   const { width: w, height: h } = size;
@@ -420,7 +384,6 @@ function OrDivider() {
   );
 }
 
-// A softly pulsing dot + text, for "something's happening, no rush".
 function WaitingLine({ children }: { children: ReactNode }) {
   const pulse = useRef(new Animated.Value(0.3)).current;
   useEffect(() => {

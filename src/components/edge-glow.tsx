@@ -13,9 +13,6 @@ const PULSE_MS = 2200;     // half a breath: bright -> dim, then dim -> bright
 const FLASH_IN_MS = 300;   // "found it" flash: up…
 const FLASH_OUT_MS = 900;  // …and gently back down
 
-// Thin strips along all four screen edges, each fading from `color` at the
-// edge to clear inwards. The shared look for every edge glow; the parent
-// animates its opacity.
 function EdgeStrips({ id, color, opacity }: { id: string; color: string; opacity: number }) {
     const { width, height } = useSafeAreaFrame();
     const edges = [
@@ -41,10 +38,7 @@ function EdgeStrips({ id, color, opacity }: { id: string; color: string; opacity
     );
 }
 
-// While you're both looking at the sky: a soft pink edge glow that gently
-// breathes, with one success buzz as it starts. Always rendered, just faded in/out, so it eases in
-// rather than popping. Animations run on the native side (useNativeDriver),
-// so they cost no re-renders.
+// Pink edge glow that breathes while you're both looking, with one success buzz.
 export function TogetherGlow({ visible }: { visible: boolean }) {
     const fade = useRef(new Animated.Value(0)).current;
     const pulse = useRef(new Animated.Value(1)).current;
@@ -64,7 +58,6 @@ export function TogetherGlow({ visible }: { visible: boolean }) {
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-        // moment over (or screen left): stop breathing
         return () => breathing.stop();
     }, [visible, fade, pulse]);
 
@@ -75,11 +68,10 @@ export function TogetherGlow({ visible }: { visible: boolean }) {
     );
 }
 
-// One short edge flash in the colour of the sun/moon, the moment it comes on
-// screen - fired by the same change that triggers the viewfinder's haptic.
+// One short flash in the sun/moon's colour when it comes into view.
 export function FoundFlash({ looking }: { looking: Looking }) {
     const opacity = useRef(new Animated.Value(0)).current;
-    // keep the last colour, so the flash doesn't change colour while fading out
+    // keep the last colour while fading out
     const color = useRef<string>(BODY_COLORS.sun);
     if (looking) color.current = BODY_COLORS[looking];
 

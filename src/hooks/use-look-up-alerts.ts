@@ -3,9 +3,7 @@ import { sendLookingNow, setPushToken } from "@/lib/api";
 import { getPushToken, notificationsSupported } from "@/lib/notifications";
 import type { Looking } from "@/hooks/use-pair-presence";
 
-// How long you have to keep looking before your special someone gets a push
-// - so sweeping the phone past the moon doesn't count. (The server then
-// stays quiet for 30 minutes before it'll send them another one.)
+// look this long before your special someone gets a push (the server then waits 30 min)
 const LOOKING_FOR_MS = 5000;
 
 type Options = {
@@ -16,12 +14,8 @@ type Options = {
     partnerOnline: boolean;    // they're in the app - they'll see it anyway
 };
 
-// Both halves of "your special someone looks up":
-// - receiving: with the toggle on, give the server this phone's push token;
-//   with it off, give it "none" - so the server has nowhere to send to.
-// - sending: after looking for LOOKING_FOR_MS while they're not in the app,
-//   tell the server; it decides (their toggle, the 30 min pause) whether a
-//   push actually goes out.
+// Receiving: with the toggle off, the server gets no push token, so it can't send.
+// Sending: after looking for a while, tell the server; it decides whether to push.
 export function useLookUpAlerts({ enabled, pairId, deviceId, myLooking, partnerOnline }: Options) {
     useEffect(() => {
         if (!pairId || !deviceId || !notificationsSupported) return;
@@ -37,7 +31,6 @@ export function useLookUpAlerts({ enabled, pairId, deviceId, myLooking, partnerO
 
     useEffect(() => {
         if (!myLooking || partnerOnline || !pairId || !deviceId) return;
-        // cleared (and restarted) as soon as what you're looking at changes
         const timer = setTimeout(() => {
             sendLookingNow(pairId, deviceId, myLooking).catch(() => {});
         }, LOOKING_FOR_MS);

@@ -22,7 +22,6 @@ const CARDINALS = [
     { label: "W", bearing: 270 },
 ];
 
-// The sky's own colours; the background gradient is the app's night theme.
 const COLORS = {
     groundFar: "#05060F", // deep below the horizon (just below it follows the time of day)
     horizon: "#A9B4FF",
@@ -32,17 +31,12 @@ const COLORS = {
     star: "#FFFFFF",
 };
 
-// The main colour of each body's glow - also used by the "found it" flash,
-// so the flash always matches what you're looking at.
+// also used by the "found it" flash
 export const BODY_COLORS = { sun: "#FFD27A", moon: "#DDE3FF" } as const;
 
 const GRID_OPACITY = 0.08;
 
-// Grid lines as lists of (bearing, altitude) points, built once:
-// - a line from the horizon up to straight overhead every 30° of bearing
-// - circles around the sky at 30° and 60° altitude
-// Every point goes through the same projection as everything else, so the
-// grid moves with the sky.
+// Grid: a line every 30 degrees of bearing, plus circles at 30 and 60 degrees altitude.
 const range = (from: number, to: number, step: number) =>
     Array.from({ length: Math.floor((to - from) / step) + 1 }, (_, i) => from + i * step);
 const GRID_LINES = [
@@ -50,11 +44,9 @@ const GRID_LINES = [
     ...[30, 60].map((altitude) => range(0, 360, 5).map((bearing) => ({ bearing, altitude }))),
 ];
 
-// Decorative stars: random, but from a fixed seed, so it's the same sky every
-// night. Placed in the sky sphere (bearing/altitude), not on the screen, so
-// they move correctly as you turn.
+// Decorative stars from a fixed seed (the same sky every night), placed in the sky.
 function seededRandom(seed: number) {
-    // mulberry32 - a tiny, well-known pseudo-random generator
+    // mulberry32
     return () => {
         seed = (seed + 0x6d2b79f5) | 0;
         let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
@@ -65,24 +57,20 @@ function seededRandom(seed: number) {
 const random = seededRandom(42);
 const STARS = Array.from({ length: 150 }, () => ({
     bearing: random() * 360,
-    // asin spreads them evenly over the dome, instead of bunching up overhead
+    // asin spreads them evenly over the dome
     altitude: (Math.asin(random()) * 180) / Math.PI,
     radius: 0.6 + random() * 1.0,
     opacity: 0.3 + random() * 0.6,
 }));
-// stars are fully out once the sun is this far below the horizon (nautical
-// twilight); they fade in from sunset until then
+// stars are fully out at nautical twilight (sun 12 degrees below the horizon)
 const FULL_NIGHT_SUN_ALTITUDE = -12;
 
-// Per animation frame, move this fraction of the way towards the latest
-// sensor reading - the same smoothing the sun/moon icon used to have, now for
-// the whole sky at once so the body and horizon can never drift apart.
 const SMOOTHING = 0.1;
 
 const distance = (a: Vec3, b: Vec3) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y) + Math.abs(a.z - b.z);
 
-// Sensors only update ~10 times a second; drawing straight from them looks
-// jumpy. This follows the latest E/N/U every frame (~60/s), easing towards it.
+// Sensors update ~30 times a second; this eases towards them every frame, so the
+// whole sky moves smoothly and together.
 function useSmoothedBasis(E: Vec3, N: Vec3, U: Vec3) {
     const target = useRef({ E, N, U });
     target.current = { E, N, U };
@@ -99,7 +87,6 @@ function useSmoothedBasis(E: Vec3, N: Vec3, U: Vec3) {
                 N: normalize(lerpVec(current.N, t.N, SMOOTHING)),
                 U: normalize(lerpVec(current.U, t.U, SMOOTHING)),
             };
-            // already there (e.g. phone lying still) - skip the re-render
             const moved = distance(next.E, current.E) + distance(next.N, current.N) + distance(next.U, current.U);
             current = next;
             if (moved > 1e-5) setSmooth(next);
@@ -111,22 +98,16 @@ function useSmoothedBasis(E: Vec3, N: Vec3, U: Vec3) {
     return smooth;
 }
 
-// how far below the horizon (in px) the ground takes to go fully dark
 const GROUND_FADE_PX = 320;
 
-// points further than this from where the phone points are behind you -
-// projecting them would flip them onto the screen upside down
+// further than this from the centre = behind you (would project upside down)
 const IN_FRONT_DEG = 80;
 
-// The drawn sky behind everything on the sky screen: background, stars, grid,
-// ground, horizon, compass letters and the sun/moon - all positioned from the same
-// E/N/U, so they move together as one space as you turn the phone.
 export function SkyScene({ bodies, sunAltitude, declination, ...raw }: Props) {
     const palette = skyColors(sunAltitude);
     const { width, height } = useSafeAreaFrame();
     const { E, N, U } = useSmoothedBasis(raw.E, raw.N, raw.U);
     const { ground, horizon, groundDir, horizonPoint, skyHigh } = groundPolygon(U, width, height);
-    // the ground gradient runs from the horizon line straight "down" into the ground
     const fadeFrom = horizon.length === 2
         ? { x: (horizon[0][0] + horizon[1][0]) / 2, y: (horizon[0][1] + horizon[1][1]) / 2 }
         : { x: width / 2, y: height / 2 };
@@ -134,8 +115,7 @@ export function SkyScene({ bodies, sunAltitude, declination, ...raw }: Props) {
     const at = (bearing: number, altitude: number) =>
         projectToScreen(E, N, U, declination, bearing, altitude, width, height);
 
-    // Splits a line into the parts in front of you, as SVG point strings -
-    // points behind you would flip across the screen.
+    // points behind you would flip across the screen, so lines are split there
     const visibleSegments = (points: { bearing: number; altitude: number }[]) => {
         const segments: string[][] = [[]];
         for (const { bearing, altitude } of points) {
@@ -146,10 +126,8 @@ export function SkyScene({ bodies, sunAltitude, declination, ...raw }: Props) {
         return segments.filter((seg) => seg.length > 1).map((seg) => seg.join(" "));
     };
 
-    // 0 while the sun is up, 1 at full night
     const night = Math.min(1, Math.max(0, sunAltitude / FULL_NIGHT_SUN_ALTITUDE));
 
-    // where each body lands on screen right now (skipping ones behind you)
     const placed = bodies
         .map((body) => ({ body, p: at(body.bearing, body.altitude) }))
         .filter(({ p }) => p.angleFromCenter < IN_FRONT_DEG);
@@ -157,9 +135,7 @@ export function SkyScene({ bodies, sunAltitude, declination, ...raw }: Props) {
     return (
         <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
             <Defs>
-                {/* anchored to the real sky, not the screen: the light colour
-                    only in a thin band at the horizon, deepening up to 60
-                    degrees - wherever you point */}
+                {/* anchored to the real horizon, not the screen */}
                 <LinearGradient
                     id="sky" gradientUnits="userSpaceOnUse"
                     x1={horizonPoint.x} y1={horizonPoint.y} x2={skyHigh.x} y2={skyHigh.y}

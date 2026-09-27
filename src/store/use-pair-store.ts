@@ -8,7 +8,7 @@ type PairStore = {
     pairId: string | null;
     pairCode: string | null;
     isHydrated: boolean;
-    // each kind on/off; null = never decided yet (so we ask exactly once)
+    // null = never decided yet (so we ask exactly once)
     notifications: Record<NotificationKind, boolean | null>;
     hydrate: () => Promise<void>;   // load deviceId + saved pair from AsyncStorage, once
     setPair: (id: string, code: string) => Promise<void>; // save + persist
