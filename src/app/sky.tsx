@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Animated, Linking, View, Pressable, StyleSheet } from "react-native";
+import { Animated, Linking, Platform, View, Pressable, ScrollView, StyleSheet } from "react-native";
 import { Redirect, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -17,6 +17,10 @@ import { useSkyReminders } from "@/hooks/use-sky-reminders";
 import { useNotificationSettings } from "@/hooks/use-notification-settings";
 import { useLookUpAlerts } from "@/hooks/use-look-up-alerts";
 import { formatDuration, useTimeTogether } from "@/hooks/use-time-together";
+import { useSkyAudio } from "@/hooks/use-sky-audio";
+import { useWidgetSync } from "@/hooks/use-widget-sync";
+import { WidgetPreview } from "react-native-android-widget";
+import { renderSkyWidget } from "@/widget/sky-widget";
 import { SkyViewfinder } from "@/components/sky-viewfinder";
 import { SkyScene } from "@/components/sky-scene";
 import { FoundFlash, TogetherGlow } from "@/components/edge-glow";
@@ -41,6 +45,8 @@ export default function Sky() {
     const deviceId = usePairStore((state) => state.deviceId);
     const pairId = usePairStore((state) => state.pairId);
     const clearPair = usePairStore((state) => state.clearPair);
+    const sound = usePairStore((state) => state.sound);
+    const setSound = usePairStore((state) => state.setSound);
     useKeepAwake();
 
     const { pair, partnerOnline, partnerLooking, partnerLeft, offline, setLooking } = usePairPresence(deviceId, pairId);
@@ -97,13 +103,17 @@ export default function Sky() {
     const partner = partnerDirection && partnerDirection.km >= PARTNER_NEARBY_KM ? partnerDirection : null;
 
     const [myLooking, setMyLooking] = useState<Looking>(null);
+    const together = !partnerLeft && !!myLooking && !!partnerLooking;
+    const timeTogether = useTimeTogether(together);
+    const widgetData = useWidgetSync(coords, partnerLocation ?? null, timeTogether);
+    const [widgetPreview, setWidgetPreview] = useState(false); // debug
+
+    const audio = useSkyAudio({ together, partnerOnline });
     const handleLookingChange = (looking: Looking) => {
         setMyLooking(looking);
         setLooking(looking);
+        if (looking) audio.chimeFound();
     };
-
-    const together = !partnerLeft && !!myLooking && !!partnerLooking;
-    const timeTogether = useTimeTogether(together);
 
     const link = partnerLooking ? { to: myLooking ?? partnerLooking, together } : null;
 
@@ -169,6 +179,7 @@ export default function Sky() {
                 top={insets.top + 8}
                 items={[
                     ...debug.items,
+                    ...(Platform.OS === "android" && widgetData ? [{ label: "Widget preview", onPress: () => setWidgetPreview(true) }] : []),
                     ...(notifications.supported
                         ? [{ label: "Test reminder in 10s", onPress: () => sendTestReminder(active?.name ?? "sun") }]
                         : []),
@@ -211,7 +222,8 @@ export default function Sky() {
             </View>
 
             <SideMenu open={menuOpen} onOpenChange={setMenuOpen} background={palette.surface}>
-                <View style={{ gap: 24 }}>
+                {/* scrolls if it doesn't fit (short phones), keeping Disconnect at the bottom */}
+                <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ gap: 24, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
                     {pair && (
                         <>
                             <View style={{ gap: 12 }}>
@@ -230,6 +242,14 @@ export default function Sky() {
                                 Counts while you both look up at the same time.
                             </Body>
                         </View>
+                    </View>
+
+                    <MenuDivider />
+
+                    <View style={{ gap: 16 }}>
+                        <MenuHeading color={palette.menuMuted}>Sound</MenuHeading>
+                        <MenuToggle label="Music" value={sound.music} onChange={(on) => setSound("music", on)} accent={palette.menuAccent} />
+                        <MenuToggle label="Chimes" value={sound.chimes} onChange={(on) => setSound("chimes", on)} accent={palette.menuAccent} />
                     </View>
 
                     <MenuDivider />
@@ -256,7 +276,7 @@ export default function Sky() {
                             </Body>
                         )}
                     </View>
-                </View>
+                </ScrollView>
 
                 <Button
                     label="Disconnect" variant="danger"
@@ -279,6 +299,14 @@ export default function Sky() {
                     <Button label="Not now" variant="ghost" onPress={closeLocationSheet} />
                 </View>
             </BottomSheet>
+
+            {__DEV__ && widgetData && (
+                <BottomSheet open={widgetPreview} onClose={() => setWidgetPreview(false)} background={palette.surface}>
+                    <Title style={{ fontSize: 32, lineHeight: 38 }}>Widget preview</Title>
+                    {/* drawn by the same native code as the home screen widget, but shows errors */}
+                    {widgetPreview && <WidgetPreview renderWidget={() => renderSkyWidget(widgetData)} width={320} height={140} />}
+                </BottomSheet>
+            )}
 
             <BottomSheet open={disconnectSheet} onClose={() => setDisconnectSheet(false)} background={palette.surface}>
                 <Title style={{ fontSize: 32, lineHeight: 38 }}>Leave this connection?</Title>

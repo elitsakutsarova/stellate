@@ -1,7 +1,10 @@
 import { create } from "zustand";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
-import { DEVICE_ID_KEY, PAIR_ID_KEY, PAIR_CODE_KEY, NOTIFICATION_KEYS, timeTogetherKey, type NotificationKind } from "@/lib/constants";
+import { updateSkyWidget } from "@/widget/widget";
+import {
+    DEVICE_ID_KEY, PAIR_ID_KEY, PAIR_CODE_KEY, NOTIFICATION_KEYS, SOUND_KEYS, timeTogetherKey, type NotificationKind, type SoundKind,
+} from "@/lib/constants";
 
 type PairStore = {
     deviceId: string | null;
@@ -10,11 +13,13 @@ type PairStore = {
     isHydrated: boolean;
     notifications: Record<NotificationKind, boolean | null>;
     secondsTogether: number;
+    sound: Record<SoundKind, boolean>;
     hydrate: () => Promise<void>;   // load deviceId + saved pair from AsyncStorage, once
     setPair: (id: string, code: string) => Promise<void>; // save + persist
     clearPair: () => Promise<void>; // disconnect
     setNotification: (kind: NotificationKind, on: boolean) => Promise<void>; // save + persist
     addSecondTogether: () => void;
+    setSound: (kind: SoundKind, on: boolean) => Promise<void>;
 };
 
 const save = (work: Promise<unknown>) => work.catch((err) => console.warn("Couldn't save:", err));
@@ -29,6 +34,7 @@ export const usePairStore = create<PairStore>((set, get) => ({
     isHydrated: false,
     notifications: { reminders: null, lookUp: null },
     secondsTogether: 0,
+    sound: { music: true, chimes: true },
 
     hydrate: async () => {
         try {
@@ -45,7 +51,9 @@ export const usePairStore = create<PairStore>((set, get) => ({
             };
             const notifications = { reminders: await load("reminders"), lookUp: await load("lookUp") };
             const secondsTogether = pairId ? await loadSecondsTogether(pairId) : 0;
-            set({ deviceId, pairId, pairCode, notifications, secondsTogether, isHydrated: true });
+            const loadSound = async (kind: SoundKind) => (await AsyncStorage.getItem(SOUND_KEYS[kind])) !== "off";
+            const sound = { music: await loadSound("music"), chimes: await loadSound("chimes") };
+            set({ deviceId, pairId, pairCode, notifications, secondsTogether, sound, isHydrated: true });
         } catch (err) {
             // never leave the app stuck on the launch screen - carry on as a fresh start
             console.warn("Couldn't load saved data:", err);
@@ -63,12 +71,18 @@ export const usePairStore = create<PairStore>((set, get) => ({
 
     clearPair: async () => {
         set({ pairId: null, pairCode: null, secondsTogether: 0 });
+        updateSkyWidget({ paired: false, me: null, them: null, secondsTogether: 0 });
         await save(AsyncStorage.multiRemove([PAIR_ID_KEY, PAIR_CODE_KEY]));
     },
 
     setNotification: async (kind, on) => {
         set((state) => ({ notifications: { ...state.notifications, [kind]: on } }));
         await save(AsyncStorage.setItem(NOTIFICATION_KEYS[kind], on ? "on" : "off"));
+    },
+
+    setSound: async (kind, on) => {
+        set((state) => ({ sound: { ...state.sound, [kind]: on } }));
+        await save(AsyncStorage.setItem(SOUND_KEYS[kind], on ? "on" : "off"));
     },
 
     addSecondTogether: () => {

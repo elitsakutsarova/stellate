@@ -4,10 +4,12 @@ import * as Clipboard from "expo-clipboard";
 import { CopyIcon, ShareIcon } from "@/components/art";
 import { glass } from "@/components/ui";
 import { COLORS, FONTS, RADIUS } from "@/lib/theme";
+import { playTap } from "@/lib/sounds";
 
 export function CodeRow({ code, size = 26, accent = COLORS.accent }: { code: string; size?: number; accent?: string }) {
     const [copied, setCopied] = useState(false);
     const copy = async () => {
+        playTap();
         try {
             await Clipboard.setStringAsync(code);
         } catch {
@@ -31,7 +33,10 @@ export function CodeRow({ code, size = 26, accent = COLORS.accent }: { code: str
                     : <CopyIcon color={COLORS.text} />}
             </Pressable>
             <Pressable
-                onPress={() => Share.share({ message: `Join me on Stellate: ${code}` }).catch(() => {})}
+                onPress={() => {
+                    playTap();
+                    Share.share({ message: `Join me on Stellate: ${code}` }).catch(() => {});
+                }}
                 accessibilityLabel="Share code"
                 style={({ pressed }) => ({
                     width: height, borderRadius: RADIUS, backgroundColor: accent,

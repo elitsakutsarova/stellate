@@ -8,6 +8,12 @@ export const NOTIFICATION_KEYS = {
     lookUp: "stellate_notifications_lookup",   // your special someone looks up
 } as const;
 export type NotificationKind = keyof typeof NOTIFICATION_KEYS;
+export const SOUND_KEYS = {
+    music: "stellate_music",
+    chimes: "stellate_chimes",
+} as const;
+export type SoundKind = keyof typeof SOUND_KEYS;
+export const WIDGET_DATA_KEY = "stellate_widget";
 
 export const CHANNELS = { reminders: "sky-reminders", lookUp: "look-up" } as const;
 

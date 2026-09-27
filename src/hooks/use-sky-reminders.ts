@@ -1,9 +1,7 @@
 import { useEffect } from "react";
 import { cancelSkyReminders, scheduleSkyReminders } from "@/lib/notifications";
 import type { Coords } from "@/lib/api";
-
-// ~10 km, like the server, so small GPS changes don't re-plan everything
-const rough = (degrees: number) => Math.round(degrees * 10) / 10;
+import { roughly as rough } from "@/lib/geo";
 
 export function useSkyReminders(enabled: boolean, me: Coords | null, them: Coords | null) {
     const myLat = me && rough(me.latitude), myLon = me && rough(me.longitude);

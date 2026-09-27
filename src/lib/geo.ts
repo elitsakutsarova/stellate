@@ -1,6 +1,9 @@
 import type { Coords } from "@/lib/api";
 
 const EARTH_RADIUS_KM = 6371;
+
+// ~10 km, like the server, so small GPS changes don't redo everything
+export const roughly = (degrees: number) => Math.round(degrees * 10) / 10;
 const toRad = (degrees: number) => (degrees * Math.PI) / 180;
 
 // Which way to face to look towards `to` (compass bearing, 0 = north) along the

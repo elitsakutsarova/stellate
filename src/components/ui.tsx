@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import Svg, { Defs, LinearGradient, RadialGradient, Rect, Stop } from "react-native-svg";
 import { COLORS, FONTS, RADIUS } from "@/lib/theme";
+import { playTap } from "@/lib/sounds";
 
 export function NightBackground({ glowY = 0.35 }: { glowY?: number }) {
     return (
@@ -63,7 +64,10 @@ export function Button({ label, onPress, variant = "primary", busy, disabled, st
     }[variant];
     return (
         <Pressable
-            onPress={onPress}
+            onPress={() => {
+                playTap();
+                onPress();
+            }}
             disabled={disabled || busy}
             style={({ pressed }) => [
                 {

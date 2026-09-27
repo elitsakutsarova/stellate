@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { Animated, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS, FONTS, fitScale } from "@/lib/theme";
+import { playTap } from "@/lib/sounds";
 
 const SLIDE_MS = 250;
 const MENU_WIDTH = 0.8;      // fraction of the screen width...
@@ -38,7 +39,10 @@ export function MenuToggle({ label, value, onChange, disabled, accent = COLORS.a
 }) {
     return (
         <Pressable
-            onPress={() => onChange(!value)}
+            onPress={() => {
+                playTap();
+                onChange(!value);
+            }}
             disabled={disabled}
             style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}
         >
@@ -106,7 +110,10 @@ export function SideMenu({ open, onOpenChange, children, background = COLORS.nig
             </View>
 
             <Pressable
-                onPress={() => onOpenChange(!open)}
+                onPress={() => {
+                    playTap();
+                    onOpenChange(!open);
+                }}
                 hitSlop={12}
                 accessibilityLabel={open ? "Close menu" : "Open menu"}
                 style={{ position: "absolute", top: insets.top + icon.top, left: 16 * (icon.line / 22), width: icon.line, height: icon.height }}

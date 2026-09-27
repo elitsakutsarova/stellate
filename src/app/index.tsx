@@ -17,6 +17,7 @@ import { ARRANGEMENTS, SunMoon } from "@/components/sun-moon";
 import { BottomSheet } from "@/components/bottom-sheet";
 import { useLaunch } from "@/components/launch-screen";
 import { Body, Button, glass, MAX_TEXT_WIDTH, NightBackground, Title, WaitingLine } from "@/components/ui";
+import { playTap } from "@/lib/sounds";
 
 type Step = "welcome" | "connect";
 type Pair = { id: string; code: string };
@@ -257,7 +258,10 @@ export default function Index() {
 
       {step === "connect" && (
         <Pressable
-          onPress={() => goTo("welcome")}
+          onPress={() => {
+            playTap();
+            goTo("welcome");
+          }}
           hitSlop={12}
           style={{ position: "absolute", top: logoTop + 4, left: 20 }}
           accessibilityLabel="Back"

@@ -40,6 +40,28 @@
           "icon": "./assets/images/android-icon-monochrome.png",
           "color": "#E9C6FF"
         }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "fonts": [
+            "./assets/fonts/BelgantAesthetic.otf",
+            "./assets/fonts/PublicSans-Regular.ttf"
+          ],
+          "widgets": [
+            {
+              "name": "Sky",
+              "label": "Stellate",
+              "description": "Your sky and your special someone's, side by side",
+              "minWidth": "250dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
       ]
     ],
     "experiments": {
