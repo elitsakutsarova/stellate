@@ -1,25 +1,31 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { Animated, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
-import { COLORS, FONTS } from "@/lib/theme";
+import { COLORS, FONTS, fitScale } from "@/lib/theme";
 
 const SLIDE_MS = 250;
 const MENU_WIDTH = 0.8;      // fraction of the screen width...
 const MENU_MAX_WIDTH = 360;  // ...but never wider than this (tablets)
 
 
-// ☰ icon geometry: three 2px lines, GAP apart, BUTTON_TOP below the safe area
-const LINE_W = 22;
-const GAP = 7;
-const BUTTON_TOP = 12;
-// the ☰ button's vertical middle (below the safe area top) - so things next
-// to it, like the viewfinder's hint, can line up with it
-export const MENU_BUTTON_CENTER = BUTTON_TOP + (GAP * 2 + 2) / 2;
+// ☰ icon geometry on a phone: three lines (22 long, 2 thick, 7 apart), 12
+// below the safe area. On bigger screens it all grows together.
+export function menuIcon(width: number, height: number) {
+    const s = Math.max(1, fitScale(width, height));
+    const line = 22 * s, thick = 2 * s, gap = 7 * s, top = 12 * s;
+    return {
+        line, thick, gap, top,
+        height: gap * 2 + thick,
+        // the icon's vertical middle (below the safe area top), so things
+        // next to it - like the viewfinder's hint - can line up with it
+        center: top + gap + thick / 2,
+    };
+}
 
 // A section title inside the menu, e.g. "Notifications".
-export function MenuHeading({ children }: { children: ReactNode }) {
+export function MenuHeading({ children, color = COLORS.muted }: { children: ReactNode; color?: string }) {
     return (
-        <Text style={{ fontFamily: FONTS.medium, color: COLORS.muted, fontSize: 12, textTransform: "uppercase", letterSpacing: 1.5 }}>
+        <Text style={{ fontFamily: FONTS.medium, color, fontSize: 12, textTransform: "uppercase", letterSpacing: 1.5 }}>
             {children}
         </Text>
     );
@@ -29,11 +35,12 @@ export function MenuHeading({ children }: { children: ReactNode }) {
 // state (no touches of its own), so it can't flip on and back off while
 // something (like a permission popup) is still being decided - it only
 // moves once the answer is known.
-export function MenuToggle({ label, value, onChange, disabled }: {
+export function MenuToggle({ label, value, onChange, disabled, accent = COLORS.accent }: {
     label: string;
     value: boolean;
     onChange: (on: boolean) => void;
     disabled?: boolean;
+    accent?: string; // the switch's "on" colour
 }) {
     return (
         <Pressable
@@ -46,7 +53,7 @@ export function MenuToggle({ label, value, onChange, disabled }: {
                 <Switch
                     value={value}
                     disabled={disabled}
-                    trackColor={{ false: COLORS.glassStrong, true: COLORS.accent }}
+                    trackColor={{ false: COLORS.glassStrong, true: accent }}
                     thumbColor={COLORS.text}
                     ios_backgroundColor={COLORS.glassStrong}
                 />
@@ -59,6 +66,7 @@ type Props = {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     children: ReactNode;
+    background?: string; // panel colour (defaults to the night theme)
 };
 
 // Menu contents go in as two children: the first sits at the top, the last
@@ -69,8 +77,9 @@ type Props = {
 // - both driven by the same `progress`, so they always move in step.
 // Always rendered (just moved off screen when closed) so it can animate both
 // ways; animations run on the native side.
-export function SideMenu({ open, onOpenChange, children }: Props) {
-    const { width } = useSafeAreaFrame();
+export function SideMenu({ open, onOpenChange, children, background = COLORS.nightMid }: Props) {
+    const { width, height } = useSafeAreaFrame();
+    const icon = menuIcon(width, height);
     const insets = useSafeAreaInsets();
     const menuWidth = Math.min(width * MENU_WIDTH, MENU_MAX_WIDTH);
     const progress = useRef(new Animated.Value(0)).current; // 0 closed, 1 open
@@ -84,9 +93,9 @@ export function SideMenu({ open, onOpenChange, children }: Props) {
 
     // ☰ -> X: the outer lines slide to the middle and tilt ±45°, the middle one fades
     const lines = [
-        { top: 0, style: { transform: [{ translateY: between(0, GAP) }, { rotate: between("0deg", "45deg") }] } },
-        { top: GAP, style: { opacity: between(1, 0) } },
-        { top: GAP * 2, style: { transform: [{ translateY: between(0, -GAP) }, { rotate: between("0deg", "-45deg") }] } },
+        { top: 0, style: { transform: [{ translateY: between(0, icon.gap) }, { rotate: between("0deg", "45deg") }] } },
+        { top: icon.gap, style: { opacity: between(1, 0) } },
+        { top: icon.gap * 2, style: { transform: [{ translateY: between(0, -icon.gap) }, { rotate: between("0deg", "-45deg") }] } },
     ];
 
     return (
@@ -101,7 +110,7 @@ export function SideMenu({ open, onOpenChange, children }: Props) {
                 <Animated.View
                     style={{
                         position: "absolute", top: 0, bottom: 0, left: 0, width: menuWidth,
-                        backgroundColor: COLORS.nightMid,
+                        backgroundColor: background,
                         borderRightWidth: 1, borderColor: COLORS.glassBorder,
                         paddingTop: insets.top + 72, paddingBottom: insets.bottom + 24, paddingHorizontal: 24,
                         justifyContent: "space-between",
@@ -116,13 +125,13 @@ export function SideMenu({ open, onOpenChange, children }: Props) {
                 onPress={() => onOpenChange(!open)}
                 hitSlop={12}
                 accessibilityLabel={open ? "Close menu" : "Open menu"}
-                style={{ position: "absolute", top: insets.top + BUTTON_TOP, left: 16, width: LINE_W, height: GAP * 2 + 2 }}
+                style={{ position: "absolute", top: insets.top + icon.top, left: 16 * (icon.line / 22), width: icon.line, height: icon.height }}
             >
                 {lines.map(({ top, style }, i) => (
                     <Animated.View
                         key={i}
                         style={[
-                            { position: "absolute", top, left: 0, width: LINE_W, height: 2, borderRadius: 1, backgroundColor: COLORS.text },
+                            { position: "absolute", top, left: 0, width: icon.line, height: icon.thick, borderRadius: icon.thick / 2, backgroundColor: COLORS.text },
                             style,
                         ]}
                     />

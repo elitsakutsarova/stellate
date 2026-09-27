@@ -4,10 +4,11 @@ import { useSafeAreaFrame } from "react-native-safe-area-context";
 import Svg, { Circle, Defs, Line, LinearGradient, Polygon, Polyline, RadialGradient, Rect, Stop, Text } from "react-native-svg";
 import { groundPolygon, projectToScreen, type SkyBody } from "@/hooks/use-sky-bodies";
 import { lerpVec, normalize, type Vec3 } from "@/hooks/use-device-orientation";
-import { COLORS as THEME } from "@/lib/theme";
+import { skyColors } from "@/lib/sky-colors";
 
 type Props = {
     bodies: SkyBody[];
+    sunAltitude: number; // sets the sky's colours and the stars (can be a debug value)
     E: Vec3;
     N: Vec3;
     U: Vec3;
@@ -23,11 +24,7 @@ const CARDINALS = [
 
 // The sky's own colours; the background gradient is the app's night theme.
 const COLORS = {
-    skyTop: THEME.night,
-    skyMid: THEME.nightMid,
-    skyBottom: THEME.nightLow,
-    groundNear: "#1C1A3F", // at the horizon: clearly not sky…
-    groundFar: "#05060F",  // …getting darker further down
+    groundFar: "#05060F", // deep below the horizon (just below it follows the time of day)
     horizon: "#A9B4FF",
     label: "#C8CEF5",
     north: "#F7B7C8",
@@ -124,10 +121,11 @@ const IN_FRONT_DEG = 80;
 // The drawn sky behind everything on the sky screen: background, stars, grid,
 // ground, horizon, compass letters and the sun/moon - all positioned from the same
 // E/N/U, so they move together as one space as you turn the phone.
-export function SkyScene({ bodies, declination, ...raw }: Props) {
+export function SkyScene({ bodies, sunAltitude, declination, ...raw }: Props) {
+    const palette = skyColors(sunAltitude);
     const { width, height } = useSafeAreaFrame();
     const { E, N, U } = useSmoothedBasis(raw.E, raw.N, raw.U);
-    const { ground, horizon, groundDir } = groundPolygon(U, width, height);
+    const { ground, horizon, groundDir, horizonPoint, skyHigh } = groundPolygon(U, width, height);
     // the ground gradient runs from the horizon line straight "down" into the ground
     const fadeFrom = horizon.length === 2
         ? { x: (horizon[0][0] + horizon[1][0]) / 2, y: (horizon[0][1] + horizon[1][1]) / 2 }
@@ -149,7 +147,6 @@ export function SkyScene({ bodies, declination, ...raw }: Props) {
     };
 
     // 0 while the sun is up, 1 at full night
-    const sunAltitude = bodies.find((b) => b.name === "sun")?.altitude ?? 0;
     const night = Math.min(1, Math.max(0, sunAltitude / FULL_NIGHT_SUN_ALTITUDE));
 
     // where each body lands on screen right now (skipping ones behind you)
@@ -160,16 +157,20 @@ export function SkyScene({ bodies, declination, ...raw }: Props) {
     return (
         <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
             <Defs>
-                <LinearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-                    <Stop offset="0" stopColor={COLORS.skyTop} />
-                    <Stop offset="0.6" stopColor={COLORS.skyMid} />
-                    <Stop offset="1" stopColor={COLORS.skyBottom} />
+                {/* anchored to the real sky, not the screen: the light colour
+                    only in a thin band at the horizon, deepening up to 60
+                    degrees - wherever you point */}
+                <LinearGradient
+                    id="sky" gradientUnits="userSpaceOnUse"
+                    x1={horizonPoint.x} y1={horizonPoint.y} x2={skyHigh.x} y2={skyHigh.y}
+                >
+                    {palette.stops.map(({ offset, color }) => <Stop key={offset} offset={offset} stopColor={color} />)}
                 </LinearGradient>
                 <LinearGradient
                     id="ground" gradientUnits="userSpaceOnUse"
                     x1={fadeFrom.x} y1={fadeFrom.y} x2={fadeTo.x} y2={fadeTo.y}
                 >
-                    <Stop offset="0" stopColor={COLORS.groundNear} />
+                    <Stop offset="0" stopColor={palette.ground} />
                     <Stop offset="1" stopColor={COLORS.groundFar} />
                 </LinearGradient>
                 <RadialGradient id="sun">
@@ -217,7 +218,7 @@ export function SkyScene({ bodies, declination, ...raw }: Props) {
                 <Line
                     x1={horizon[0][0]} y1={horizon[0][1]}
                     x2={horizon[1][0]} y2={horizon[1][1]}
-                    stroke={COLORS.horizon} strokeOpacity={0.25} strokeWidth={1}
+                    stroke={palette.labels} strokeOpacity={0.35} strokeWidth={1}
                 />
             )}
 
@@ -237,7 +238,7 @@ export function SkyScene({ bodies, declination, ...raw }: Props) {
                     <Text
                         key={label}
                         x={p.x} y={p.y - 10}
-                        fill={label === "N" ? COLORS.north : COLORS.label}
+                        fill={label === "N" ? palette.north : palette.labels}
                         fillOpacity={0.5}
                         fontSize={16} fontWeight="600" textAnchor="middle"
                     >

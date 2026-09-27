@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { View, Text, Pressable } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Animated, Easing, View, Text, Pressable } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,6 +22,38 @@ import { BottomSheet } from "@/components/bottom-sheet";
 import { CodeRow } from "@/components/code-row";
 import { Body, Button, MAX_TEXT_WIDTH, Pill, Title } from "@/components/ui";
 import { COLORS, fitScale } from "@/lib/theme";
+import { skyColors, SKY_PRESETS, type SkyPreset } from "@/lib/sky-colors";
+
+// Before the sun's position is known (no location yet), show the night sky.
+const NIGHT_UNTIL_KNOWN = -20;
+const GLIDE_MS = 1200;
+
+// Follows `target`, but glides there over GLIDE_MS instead of jumping - so
+// the sky's colours change smoothly (switching debug presets, or the real
+// sun moving). The first known value is taken straight away, so opening the
+// app doesn't sweep through other times of day first.
+function useGlide(target: number | undefined) {
+    const anim = useRef(new Animated.Value(target ?? 0)).current; // starts where the target is
+    const [value, setValue] = useState<number | undefined>(target);
+    const started = useRef(target !== undefined);
+
+    useEffect(() => {
+        const id = anim.addListener(({ value }) => setValue(value));
+        return () => anim.removeListener(id);
+    }, [anim]);
+
+    useEffect(() => {
+        if (target === undefined) return;
+        if (!started.current) {
+            started.current = true;
+            anim.setValue(target);
+            return;
+        }
+        Animated.timing(anim, { toValue: target, duration: GLIDE_MS, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }).start();
+    }, [target, anim]);
+
+    return value;
+}
 
 export default function Sky() {
     const router = useRouter();
@@ -80,6 +112,15 @@ export default function Sky() {
         : sensors;
     const nextDebugTarget: Looking = debugTarget === null ? "sun" : debugTarget === "sun" ? "moon" : null;
 
+    // The sky's colours follow the real sun. Development only: a second pill
+    // cycles real -> day -> golden -> twilight -> night, to check each look.
+    const [debugSky, setDebugSky] = useState<SkyPreset | null>(null);
+    const skyOrder: (SkyPreset | null)[] = [null, "day", "golden", "twilight", "night"];
+    const nextDebugSky = skyOrder[(skyOrder.indexOf(debugSky) + 1) % skyOrder.length];
+    const realSunAltitude = bodies.find((b) => b.name === "sun")?.altitude;
+    const sunAltitude = useGlide(__DEV__ && debugSky ? SKY_PRESETS[debugSky] : realSunAltitude) ?? NIGHT_UNTIL_KNOWN;
+    const palette = skyColors(sunAltitude);
+
     // What *I'm* looking at, straight from the viewfinder (no delay) - the
     // other phone's value already arrives settled via presence.
     const [myLooking, setMyLooking] = useState<Looking>(null);
@@ -130,7 +171,7 @@ export default function Sky() {
             <Stack.Screen options={{ headerShown: false }} />
             <StatusBar style="light" />
 
-            <SkyScene bodies={bodies} E={E} N={N} U={U} declination={declination} />
+            <SkyScene bodies={bodies} sunAltitude={sunAltitude} E={E} N={N} U={U} declination={declination} />
             <SkyViewfinder bodies={bodies} active={active} E={E} N={N} U={U} declination={declination} onLookingChange={handleLookingChange} />
             <FoundFlash looking={myLooking} />
             <TogetherGlow visible={together} />
@@ -149,6 +190,14 @@ export default function Sky() {
                     <Pill>{nextDebugTarget ? `Debug: look at ${nextDebugTarget}` : "Debug: sensors"}</Pill>
                 </Pressable>
             )}
+            {__DEV__ && (
+                <Pressable
+                    onPress={() => setDebugSky(nextDebugSky)}
+                    style={{ position: "absolute", top: insets.top + 120, right: 12, zIndex: 2 }}
+                >
+                    <Pill>{`Debug sky: ${debugSky ?? "real"} -> ${nextDebugSky ?? "real"}`}</Pill>
+                </Pressable>
+            )}
 
             {/* Status card: quiet on purpose - it hugs its text, with a faint
                 glass look. Small on phones, scaled up (by s) on tablets. */}
@@ -161,7 +210,7 @@ export default function Sky() {
                         maxWidth: MAX_TEXT_WIDTH * s, alignItems: "center", gap: 2 * s,
                         paddingVertical: 8 * s, paddingHorizontal: 16 * s,
                         borderRadius: together ? 20 * s : 999,
-                        backgroundColor: "rgba(255, 255, 255, 0.05)",
+                        backgroundColor: palette.card, // white glass at night, smoked glass by day
                         borderWidth: 1, borderColor: "rgba(255, 255, 255, 0.1)",
                     }}
                 >
@@ -187,31 +236,33 @@ export default function Sky() {
                 </View>
             </View>
 
-            <SideMenu open={menuOpen} onOpenChange={setMenuOpen}>
+            <SideMenu open={menuOpen} onOpenChange={setMenuOpen} background={palette.surface}>
                 <View style={{ gap: 36 }}>
                     {pair && (
                         <View style={{ gap: 12 }}>
-                            <MenuHeading>Your connection</MenuHeading>
-                            <CodeRow code={pair.code} size={20} />
+                            <MenuHeading color={palette.menuMuted}>Your connection</MenuHeading>
+                            <CodeRow code={pair.code} size={20} accent={palette.menuAccent} />
                         </View>
                     )}
 
                     <View style={{ gap: 16 }}>
-                        <MenuHeading>Notifications</MenuHeading>
+                        <MenuHeading color={palette.menuMuted}>Notifications</MenuHeading>
                         <MenuToggle
                             label="When your special someone looks up"
                             value={notifications.lookUp}
                             onChange={(on) => notifications.toggle("lookUp", on)}
                             disabled={!notifications.supported}
+                            accent={palette.menuAccent}
                         />
                         <MenuToggle
                             label="When the sun or moon is up for both of you"
                             value={notifications.reminders}
                             onChange={(on) => notifications.toggle("reminders", on)}
                             disabled={!notifications.supported}
+                            accent={palette.menuAccent}
                         />
                         {!notifications.supported && (
-                            <Body style={{ color: COLORS.muted, fontSize: 13, lineHeight: 18 }}>
+                            <Body style={{ color: palette.menuMuted, fontSize: 13, lineHeight: 18 }}>
                                 Not available in Expo Go on Android - needs a development build.
                             </Body>
                         )}
@@ -232,25 +283,25 @@ export default function Sky() {
                 />
             </SideMenu>
 
-            <BottomSheet open={locationSheet} onClose={() => setLocationSheet(false)}>
+            <BottomSheet open={locationSheet} onClose={() => setLocationSheet(false)} background={palette.surface}>
                 <Title style={{ fontSize: 32, lineHeight: 38 }}>Location needed</Title>
                 <Body style={{ color: COLORS.muted }}>
                     {canAskAgain
                         ? "Stellate uses your location to find where the sun and moon are in your sky."
                         : "Location is off for Stellate. Turn it on in Settings to find the sun and moon in your sky."}
                 </Body>
-                <View style={{ gap: 12 }}>
+                <View style={{ gap: 4 }}>
                     <Button label={canAskAgain ? "Allow location" : "Open Settings"} onPress={fixLocation} />
-                    <Button label="Not now" variant="glass" onPress={() => setLocationSheet(false)} />
+                    <Button label="Not now" variant="ghost" onPress={() => setLocationSheet(false)} />
                 </View>
             </BottomSheet>
 
-            <BottomSheet open={disconnectSheet} onClose={() => setDisconnectSheet(false)}>
+            <BottomSheet open={disconnectSheet} onClose={() => setDisconnectSheet(false)} background={palette.surface}>
                 <Title style={{ fontSize: 32, lineHeight: 38 }}>Leave this connection?</Title>
                 <Body style={{ color: COLORS.muted }}>You can reconnect later with the same code.</Body>
-                <View style={{ gap: 12 }}>
+                <View style={{ gap: 4 }}>
                     <Button label="Disconnect" variant="danger" onPress={handleDisconnect} />
-                    <Button label="Cancel" variant="glass" onPress={() => setDisconnectSheet(false)} />
+                    <Button label="Cancel" variant="ghost" onPress={() => setDisconnectSheet(false)} />
                 </View>
             </BottomSheet>
         </View>

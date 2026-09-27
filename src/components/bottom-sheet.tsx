@@ -12,7 +12,12 @@ const DISMISS_SPEED = 1;    // ...or flick down faster than this
 // swiping it down, tapping the dimmed part, or Android's back button.
 // Always rendered (just pushed below the screen when closed) so it can
 // animate both ways.
-export function BottomSheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+export function BottomSheet({ open, onClose, children, background = COLORS.nightMid }: {
+    open: boolean;
+    onClose: () => void;
+    children: ReactNode;
+    background?: string; // panel colour (defaults to the night theme)
+}) {
     const { height } = useSafeAreaFrame();
     const insets = useSafeAreaInsets();
     const progress = useRef(new Animated.Value(0)).current; // 0 closed, 1 open
@@ -60,7 +65,7 @@ export function BottomSheet({ open, onClose, children }: { open: boolean; onClos
                 {...swipe.panHandlers}
                 style={{
                     position: "absolute", left: 0, right: 0, bottom: 0,
-                    backgroundColor: COLORS.nightMid,
+                    backgroundColor: background,
                     borderTopLeftRadius: 28, borderTopRightRadius: 28,
                     borderWidth: 1, borderBottomWidth: 0, borderColor: COLORS.glassBorder,
                     paddingHorizontal: 24, paddingTop: 12, paddingBottom: insets.bottom + 24,

@@ -8,7 +8,7 @@ import { COLORS, FONTS, RADIUS } from "@/lib/theme";
 // A pair code in a glass box (tap to copy - it briefly says "Copied"), with a
 // lavender paper-plane button next to it to send it to someone. Used in the
 // "your code" sheet and the side menu.
-export function CodeRow({ code, size = 26 }: { code: string; size?: number }) {
+export function CodeRow({ code, size = 26, accent = COLORS.accent }: { code: string; size?: number; accent?: string }) {
     const [copied, setCopied] = useState(false);
     const copy = async () => {
         await Clipboard.setStringAsync(code);
@@ -33,7 +33,7 @@ export function CodeRow({ code, size = 26 }: { code: string; size?: number }) {
                 onPress={() => Share.share({ message: `Join me on Stellate: ${code}` })}
                 accessibilityLabel="Share code"
                 style={({ pressed }) => ({
-                    width: height, borderRadius: RADIUS, backgroundColor: COLORS.accent,
+                    width: height, borderRadius: RADIUS, backgroundColor: accent,
                     alignItems: "center", justifyContent: "center", opacity: pressed ? 0.75 : 1,
                 })}
             >

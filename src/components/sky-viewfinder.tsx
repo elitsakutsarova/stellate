@@ -6,7 +6,7 @@ import { projectToScreen, type SkyBody } from "@/hooks/use-sky-bodies";
 import type { Vec3 } from "@/hooks/use-device-orientation";
 import type { Looking } from "@/hooks/use-pair-presence";
 import { COLORS, FONTS, fitScale } from "@/lib/theme";
-import { MENU_BUTTON_CENTER } from "@/components/side-menu";
+import { menuIcon } from "@/components/side-menu";
 import { ArrowIcon } from "@/components/art";
 
 // How far in from each screen edge the body's centre must be before it counts
@@ -122,7 +122,7 @@ export function SkyViewfinder({ bodies, active, E, N, U, declination, onLookingC
             <Text
                 style={{
                     position: "absolute", alignSelf: "center",
-                    top: insets.top + MENU_BUTTON_CENTER - hintLine / 2,
+                    top: insets.top + menuIcon(width, height).center - hintLine / 2,
                     fontFamily: FONTS.regular, fontSize: hintSize, lineHeight: hintLine, color: COLORS.muted,
                 }}
             >

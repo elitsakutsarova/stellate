@@ -229,11 +229,14 @@ export default function Index() {
       {measured && (
         <>
           {/* the sun and moon, centred in the space between the logo and the
-              panel - following the panel up and shrinking to fit on connect */}
+              panel - following the panel up and shrinking to fit on connect,
+              and fading out while the keyboard lifts the panel over them (so
+              they don't show through the glass behind the text) */}
           <Animated.View
             pointerEvents="none"
             style={{
               position: "absolute", left: 0, right: 0, height: 0, top: artY("welcome"),
+              opacity: keyboardLift.interpolate({ inputRange: [-150, 0], outputRange: [0, 1], extrapolate: "clamp" }),
               transform: [
                 {
                   translateY: art.interpolate({

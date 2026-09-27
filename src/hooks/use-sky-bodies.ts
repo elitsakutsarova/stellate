@@ -129,9 +129,23 @@ export function groundPolygon(U: Vec3, width: number, height: number) {
     // flat wall. It's the opposite of aboveHorizon's slope (a, b).
     const a = up.x / kx;
     const b = -up.y / ky;
-    const len = Math.hypot(a, b) || 1;
-    const groundDir = { x: -a / len, y: -b / len };
-    return { ground, horizon, groundDir };
+    const slope = Math.max(Math.hypot(a, b), 1e-5); // ~0 only when looking straight up/down
+    const groundDir = { x: -a / slope, y: -b / slope };
+
+    // For the sky's colour gradient (light at the horizon, deeper higher up):
+    // - horizonPoint: the spot on the horizon line nearest the screen's
+    //   middle (can be off screen, e.g. when looking up), and
+    // - skyHigh: the spot 60 degrees up from there.
+    // aboveHorizon at the screen's middle is exactly sin(tilt) - how far up
+    // the phone points - and a point `altitude` degrees up, straight ahead,
+    // lands f * (tan(altitude - tilt) + tan(tilt)) px above the horizon.
+    const centre = aboveHorizon(width / 2, height / 2);
+    const horizonPoint = { x: width / 2 + groundDir.x * (centre / slope), y: height / 2 + groundDir.y * (centre / slope) };
+    const tilt = Math.asin(Math.min(1, Math.max(-1, centre)));
+    const deg = Math.PI / 180;
+    const reach = kx * (Math.tan(Math.min(60 * deg - tilt, 85 * deg)) + Math.tan(tilt));
+    const skyHigh = { x: horizonPoint.x - groundDir.x * reach, y: horizonPoint.y - groundDir.y * reach };
+    return { ground, horizon, groundDir, horizonPoint, skyHigh };
 }
 
 // The reverse of projectToScreen: a made-up E/N/U for a phone aimed exactly

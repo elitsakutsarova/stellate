@@ -57,36 +57,41 @@ export function Body({ children, style }: { children: ReactNode; style?: StylePr
 // "primary": solid lavender - the one main action on a screen.
 // "glass": see-through - everything else.
 // "danger": see-through with red text - for leaving/deleting things.
-export function Button({ label, onPress, variant = "primary", busy, disabled, style }: {
+// "ghost": just text, smaller - the quiet way out (Cancel, Not now).
+export function Button({ label, onPress, variant = "primary", busy, disabled, style, accent = COLORS.accent }: {
     label: string;
     onPress: () => void;
-    variant?: "primary" | "glass" | "danger";
+    variant?: "primary" | "glass" | "danger" | "ghost";
+    accent?: string;         // primary button colour (default lavender)
     busy?: boolean;          // shows a spinner instead of the label
     disabled?: boolean;
     style?: StyleProp<ViewStyle>;
 }) {
-    const primary = variant === "primary";
+    const look = {
+        primary: { background: accent, border: 0, text: COLORS.onAccent, height: 54, size: 17 },
+        glass: { background: COLORS.glass, border: 1, text: COLORS.text, height: 54, size: 17 },
+        danger: { background: COLORS.glass, border: 1, text: COLORS.danger, height: 54, size: 17 },
+        ghost: { background: "transparent", border: 0, text: COLORS.muted, height: 44, size: 15 },
+    }[variant];
     return (
         <Pressable
             onPress={onPress}
             disabled={disabled || busy}
             style={({ pressed }) => [
                 {
-                    minHeight: 54, paddingHorizontal: 24, borderRadius: RADIUS,
+                    minHeight: look.height, paddingHorizontal: 24, borderRadius: RADIUS,
                     alignItems: "center", justifyContent: "center",
-                    backgroundColor: primary ? COLORS.accent : COLORS.glass,
-                    borderWidth: primary ? 0 : 1, borderColor: COLORS.glassBorder,
+                    backgroundColor: look.background,
+                    borderWidth: look.border, borderColor: COLORS.glassBorder,
                     opacity: disabled ? 0.5 : pressed ? 0.75 : 1,
                 },
                 style,
             ]}
         >
             {busy ? (
-                <ActivityIndicator color={primary ? COLORS.onAccent : COLORS.text} />
+                <ActivityIndicator color={look.text} />
             ) : (
-                <Text style={{ fontFamily: FONTS.medium, fontSize: 17, color: primary ? COLORS.onAccent : variant === "danger" ? COLORS.danger : COLORS.text }}>
-                    {label}
-                </Text>
+                <Text style={{ fontFamily: FONTS.medium, fontSize: look.size, color: look.text }}>{label}</Text>
             )}
         </Pressable>
     );
