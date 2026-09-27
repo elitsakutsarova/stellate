@@ -51,10 +51,8 @@ export function skyColors(sunAltitude: number) {
     const horizon = blend("horizon");
     const card = mixRgb(a.card, b.card, t);
     const cloud = mixRgb(a.cloud, b.cloud, t);
-    const day = mix(a.daylight, b.daylight, t); 
+    const day = mix(a.daylight, b.daylight, t);
     return {
-        zenith: css(zenith),
-        horizon: css(horizon),
         stops: STOP_OFFSETS.map((offset) => ({ offset, color: css(mixRgb(horizon, zenith, ease(offset))) })),
         ground: css(blend("ground")),
         labels: css(blend("labels")),

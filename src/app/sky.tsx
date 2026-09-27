@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Easing, View, Pressable, StyleSheet } from "react-native";
+import { Animated, Easing, Linking, View, Pressable, StyleSheet } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Linking from "expo-linking";
 import { useKeepAwake } from "expo-keep-awake";
 import { setLocation, setPresence } from "@/lib/api";
 import { cancelSkyReminders, sendTestReminder } from "@/lib/notifications";

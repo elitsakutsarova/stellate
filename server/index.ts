@@ -130,7 +130,7 @@ const createPair = async (req: express.Request, res: express.Response) => {
 const joinPair = async (req: express.Request, res: express.Response) => {
     const { deviceId } = req.body ?? {};
     const code = typeof req.body?.code === "string" ? req.body.code.trim().toUpperCase() : "";
-    if (!deviceId || !code) {
+    if (typeof deviceId !== "string" || !deviceId || !code) {
         res.status(400).json({ error: "code and deviceId are required" });
         return;
     }

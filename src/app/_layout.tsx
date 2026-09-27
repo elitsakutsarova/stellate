@@ -8,7 +8,8 @@ import { usePairStore } from "@/store/use-pair-store";
 import { LaunchScreen, useLaunch } from "@/components/launch-screen";
 import { COLORS, FONT_FILES } from "@/lib/theme";
 
-SplashScreen.preventAutoHideAsync();
+// can reject if the splash is already gone (e.g. after a reload) - nothing to do then
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   const hydrate = usePairStore((state) => state.hydrate);

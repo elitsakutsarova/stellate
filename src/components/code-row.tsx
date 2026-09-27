@@ -8,7 +8,11 @@ import { COLORS, FONTS, RADIUS } from "@/lib/theme";
 export function CodeRow({ code, size = 26, accent = COLORS.accent }: { code: string; size?: number; accent?: string }) {
     const [copied, setCopied] = useState(false);
     const copy = async () => {
-        await Clipboard.setStringAsync(code);
+        try {
+            await Clipboard.setStringAsync(code);
+        } catch {
+            return; // nothing copied, so don't say it was
+        }
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
     };
@@ -27,7 +31,7 @@ export function CodeRow({ code, size = 26, accent = COLORS.accent }: { code: str
                     : <CopyIcon color={COLORS.text} />}
             </Pressable>
             <Pressable
-                onPress={() => Share.share({ message: `Join me on Stellate: ${code}` })}
+                onPress={() => Share.share({ message: `Join me on Stellate: ${code}` }).catch(() => {})}
                 accessibilityLabel="Share code"
                 style={({ pressed }) => ({
                     width: height, borderRadius: RADIUS, backgroundColor: accent,

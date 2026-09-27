@@ -27,7 +27,7 @@ export function NightBackground({ glowY = 0.35 }: { glowY?: number }) {
 export const MAX_TEXT_WIDTH = 440;
 
 // No orphans: glue the last two words, and ask each platform for balanced line breaks.
-export const noOrphan = (text: string) => text.replace(/ (\S+)$/, "\u00A0$1");
+const noOrphan = (text: string) => text.replace(/ (\S+)$/, "\u00A0$1");
 const tidy = (children: ReactNode) => (typeof children === "string" ? noOrphan(children) : children);
 const pretty = { textBreakStrategy: "balanced", lineBreakStrategyIOS: "push-out" } as const;
 

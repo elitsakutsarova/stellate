@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import * as SunCalc from "suncalc";
 import Constants, { ExecutionEnvironment } from "expo-constants";
 import type * as NotificationsModule from "expo-notifications";
 import type { Coords } from "@/lib/api";
@@ -24,7 +25,6 @@ Notifications?.setNotificationHandler({
     }),
 });
 
-const SunCalc = require("suncalc");
 
 const DAYS_AHEAD = 3;      // how far ahead reminders are planned (redone on every app open)
 const STEP_MINUTES = 10;   // how finely we check the sky
@@ -41,7 +41,7 @@ const isUp = (body: BodyName, date: Date, where: Coords) =>
 const bothSee = (body: BodyName, date: Date, me: Coords, them: Coords) => isUp(body, date, me) && isUp(body, date, them);
 const allowedHour = (date: Date) => date.getHours() >= EARLIEST_HOUR && date.getHours() < LATEST_HOUR;
 
-export function findSharedTimes(body: BodyName, me: Coords, them: Coords, from = new Date()): Date[] {
+function findSharedTimes(body: BodyName, me: Coords, them: Coords, from = new Date()): Date[] {
     const stepMs = STEP_MINUTES * 60 * 1000;
     const end = from.getTime() + DAYS_AHEAD * 24 * 60 * 60 * 1000;
     const good = (date: Date) => allowedHour(date) && bothSee(body, date, me, them);

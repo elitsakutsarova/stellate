@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
+import * as SunCalc from "suncalc";
 import type { Basis, Vec3 } from "./use-device-orientation";
 
-const SunCalc = require("suncalc");
 export type SkyPoint = { bearing: number; altitude: number };
 // fraction: how much of the moon is lit (0 new - 1 full). sun: where the light comes
 // from (left out by the debug phases, which then use waxing to pick a side).
@@ -56,28 +56,19 @@ export function pointAlong(a: SkyPoint, b: SkyPoint, t: number): SkyPoint {
 // moon (only in debug mode, where the moon is moved there).
 export function towardsSun(moon: SkyPoint, sun: SkyPoint, at: (bearing: number, altitude: number) => { x: number; y: number }) {
     "worklet";
-    const m = targetVector(moon.bearing, moon.altitude);
-    const s = targetVector(sun.bearing, sun.altitude);
-    const along = m.x * s.x + m.y * s.y + m.z * s.z;
-    // the direction towards the sun, flat against the sky at the moon
-    const t = { x: s.x - along * m.x, y: s.y - along * m.y, z: s.z - along * m.z };
-    const length = Math.hypot(t.x, t.y, t.z);
-    if (length < 0.02) return null;
-    const step = Math.PI / 180;
-    const p = {
-        x: m.x * Math.cos(step) + (t.x / length) * Math.sin(step),
-        y: m.y * Math.cos(step) + (t.y / length) * Math.sin(step),
-        z: m.z * Math.cos(step) + (t.z / length) * Math.sin(step),
-    };
+    const apart = degreesApart(moon, sun);
+    // right on top of each other (or exactly opposite): no one direction
+    if (apart < 1 || apart > 179) return null;
+    const step = pointAlong(moon, sun, 1 / apart); // 1 degree towards the sun
     const from = at(moon.bearing, moon.altitude);
-    const to = at((Math.atan2(p.x, p.y) * 180) / Math.PI, (Math.asin(p.z) * 180) / Math.PI);
+    const to = at(step.bearing, step.altitude);
     return (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI;
 }
 
 // Projects a real-world (bearing, altitude) onto the screen through the phone's
 // attitude (E/N/U = magnetic east/north/up in device axes), so rolling the phone
 // rotates the sky correctly. declination converts true bearings to magnetic.
-export function projectToScreen(
+function projectToScreen(
     E: Vec3, N: Vec3, U: Vec3, declination: number,
     targetBearing: number, targetAltitude: number,
     width: number, height: number
@@ -131,7 +122,6 @@ export function projector(basis: Basis, declination: number, width: number, heig
     return (bearing: number, altitude: number) =>
         projectToScreen(basis.E, basis.N, basis.U, declination, bearing, altitude, width, height);
 }
-export type Project = ReturnType<typeof projector>;
 
 // The horizon always projects to a straight line, so "sky or ground" is a linear
 // test per screen point: aboveHorizon(x, y) > 0 is sky.

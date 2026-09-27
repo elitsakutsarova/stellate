@@ -15,6 +15,8 @@ type PairStore = {
     setNotification: (kind: NotificationKind, on: boolean) => Promise<void>; // save + persist
 };
 
+const save = (work: Promise<unknown>) => work.catch((err) => console.warn("Couldn't save:", err));
+
 export const usePairStore = create<PairStore>((set) => ({
     deviceId: null,
     pairId: null,
@@ -23,35 +25,41 @@ export const usePairStore = create<PairStore>((set) => ({
     notifications: { reminders: null, lookUp: null },
 
     hydrate: async () => {
-        let deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
-        if (!deviceId) {
-            deviceId = Crypto.randomUUID();
-            await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
+        try {
+            let deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
+            if (!deviceId) {
+                deviceId = Crypto.randomUUID();
+                await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
+            }
+            const pairId = await AsyncStorage.getItem(PAIR_ID_KEY);
+            const pairCode = await AsyncStorage.getItem(PAIR_CODE_KEY);
+            const load = async (kind: NotificationKind) => {
+                const saved = await AsyncStorage.getItem(NOTIFICATION_KEYS[kind]);
+                return saved === null ? null : saved === "on";
+            };
+            const notifications = { reminders: await load("reminders"), lookUp: await load("lookUp") };
+            set({ deviceId, pairId, pairCode, notifications, isHydrated: true });
+        } catch (err) {
+            // never leave the app stuck on the launch screen - carry on as a fresh start
+            console.warn("Couldn't load saved data:", err);
+            set((state) => ({ deviceId: state.deviceId ?? Crypto.randomUUID(), isHydrated: true }));
         }
-        const pairId = await AsyncStorage.getItem(PAIR_ID_KEY);
-        const pairCode = await AsyncStorage.getItem(PAIR_CODE_KEY);
-        const load = async (kind: NotificationKind) => {
-            const saved = await AsyncStorage.getItem(NOTIFICATION_KEYS[kind]);
-            return saved === null ? null : saved === "on";
-        };
-        const notifications = { reminders: await load("reminders"), lookUp: await load("lookUp") };
-        set({ deviceId, pairId, pairCode, notifications, isHydrated: true });
     },
 
+    // The app updates straight away; saving is best-effort, so a storage hiccup can't
+    // block connecting, disconnecting or a toggle.
     setPair: async (id, code) => {
-        await AsyncStorage.setItem(PAIR_ID_KEY, id);
-        await AsyncStorage.setItem(PAIR_CODE_KEY, code);
         set({ pairId: id, pairCode: code });
+        await save(AsyncStorage.multiSet([[PAIR_ID_KEY, id], [PAIR_CODE_KEY, code]]));
     },
 
     clearPair: async () => {
-        await AsyncStorage.removeItem(PAIR_ID_KEY);
-        await AsyncStorage.removeItem(PAIR_CODE_KEY);
         set({ pairId: null, pairCode: null });
+        await save(AsyncStorage.multiRemove([PAIR_ID_KEY, PAIR_CODE_KEY]));
     },
 
     setNotification: async (kind, on) => {
-        await AsyncStorage.setItem(NOTIFICATION_KEYS[kind], on ? "on" : "off");
         set((state) => ({ notifications: { ...state.notifications, [kind]: on } }));
+        await save(AsyncStorage.setItem(NOTIFICATION_KEYS[kind], on ? "on" : "off"));
     },
 }));

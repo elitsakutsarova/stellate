@@ -4,7 +4,7 @@ import {
     cancelAnimation, Easing, useDerivedValue, useSharedValue, withDelay, withRepeat, withSequence, withTiming, type SharedValue,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import { focalPx, projector, type SkyPoint } from "@/hooks/use-sky-bodies";
+import { degreesApart, focalPx, projector, type SkyPoint } from "@/hooks/use-sky-bodies";
 import type { Basis } from "@/hooks/use-device-orientation";
 
 // Decorative things placed in the sky (stars, clouds, shooting stars), drawn with Skia.
@@ -195,13 +195,6 @@ const BODY_CLEARANCE = 8;  // degrees kept free around the sun/moon, on top of t
 // how a puff fades from its centre (offset, opacity): eased, so no puff has an outline
 const PUFF_FADE = [[0, 1], [0.35, 0.75], [0.7, 0.25], [1, 0]];
 
-const degreesBetween = (a: SkyPoint, b: SkyPoint) => {
-    const r = Math.PI / 180;
-    const cos = Math.sin(a.altitude * r) * Math.sin(b.altitude * r) +
-        Math.cos(a.altitude * r) * Math.cos(b.altitude * r) * Math.cos((a.bearing - b.bearing) * r);
-    return Math.acos(Math.min(1, Math.max(-1, cos))) / r;
-};
-
 // "rgb(r, g, b)" -> "rgba(r, g, b, a)"
 const withAlpha = (rgb: string, alpha: number) => rgb.replace("rgb(", "rgba(").replace(")", `, ${alpha})`);
 
@@ -210,7 +203,7 @@ const withAlpha = (rgb: string, alpha: number) => rgb.replace("rgb(", "rgba(").r
 export function Clouds({ sky, color, opacity, bodies }: { sky: SkyView; color: string; opacity: number; bodies: SkyPoint[] }) {
     const { basis, declination, width, height } = sky;
     const puffs = CLOUDS
-        .filter((cloud) => bodies.every((body) => degreesBetween(cloud, body) > cloud.halfWidth * 1.6 + BODY_CLEARANCE))
+        .filter((cloud) => bodies.every((body) => degreesApart(cloud, body) > cloud.halfWidth * 1.6 + BODY_CLEARANCE))
         .flatMap((cloud) => cloud.puffs);
     // Made here, not in the worklet: the React Compiler moves small callbacks like this
     // out of the component, and the moved copy can't run on the UI thread.

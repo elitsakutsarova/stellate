@@ -10,9 +10,11 @@ export function useTimeTogether(pairId: string | null, together: boolean) {
     useEffect(() => {
         if (!pairId) return;
         let cancelled = false;
-        AsyncStorage.getItem(timeTogetherKey(pairId)).then((saved) => {
-            if (!cancelled) setCount({ pairId, seconds: Number(saved) || 0 });
-        });
+        AsyncStorage.getItem(timeTogetherKey(pairId))
+            .catch(() => null) // unreadable: count from 0 rather than not at all
+            .then((saved) => {
+                if (!cancelled) setCount({ pairId, seconds: Number(saved) || 0 });
+            });
         return () => {
             cancelled = true;
         };

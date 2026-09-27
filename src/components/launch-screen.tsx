@@ -48,7 +48,7 @@ export function LaunchScreen({ ready }: { ready: boolean }) {
         <Animated.View
             style={[StyleSheet.absoluteFill, { zIndex: 100, opacity: fade }]}
             // our screen is drawn - the native splash can go
-            onLayout={() => SplashScreen.hideAsync()}
+            onLayout={() => SplashScreen.hideAsync().catch(() => {})}
         >
             {/* plain navy like the native splash; the gradient fades in */}
             <View style={[StyleSheet.absoluteFill, { backgroundColor: COLORS.night }]} />
